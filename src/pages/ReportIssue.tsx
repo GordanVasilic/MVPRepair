@@ -161,18 +161,25 @@ export default function ReportIssue() {
             .from('issue-images')
             .upload(fileName, image)
 
-          if (!uploadError) {
+          if (uploadError) {
+            console.error('Error uploading image:', uploadError)
+            toast.error(`Greška pri upload-u slike: ${uploadError.message}`)
+          } else {
             const { data: { publicUrl } } = supabase.storage
               .from('issue-images')
               .getPublicUrl(fileName)
 
-            await supabase
+            const { error: insertError } = await supabase
               .from('issue_images')
               .insert({
                 issue_id: issue.id,
                 image_url: publicUrl,
                 image_name: image.name
               })
+
+            if (insertError) {
+              console.error('Error saving image record:', insertError)
+            }
           }
         }
       }

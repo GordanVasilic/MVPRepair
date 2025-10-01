@@ -1,23 +1,89 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Calendar, User, AlertCircle } from 'lucide-react'
+import { ArrowLeft, MapPin, Calendar, User, AlertCircle, Loader2 } from 'lucide-react'
 import Layout from '../components/Layout'
+import { supabase, type Issue } from '../lib/supabase'
+import { toast } from 'sonner'
 
 export default function IssueDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [issue, setIssue] = useState<Issue | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Mock data - ovo će biti zamijenjeno sa pravim API pozivom
-  const issue = {
-    id: id,
-    title: 'Curenje vode iz slavine',
-    description: 'Slavina u kuhinji curi već nekoliko dana. Potrebna je hitna popravka.',
-    status: 'pending',
-    priority: 'high',
-    category: 'Vodoinstalacije',
-    location: 'Kuhinja',
-    createdAt: '2024-01-15',
-    reportedBy: 'Marko Petrović',
-    images: []
+  useEffect(() => {
+    if (!id) {
+      navigate('/issues')
+      return
+    }
+
+    const fetchIssue = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('issues')
+          .select(`
+            *,
+            apartment:apartments (
+              apartment_number,
+              floor,
+              building:buildings (
+                name,
+                address
+              )
+            )
+          `)
+          .eq('id', id)
+          .single()
+
+        if (error) {
+          console.error('Error fetching issue:', error)
+          toast.error('Greška pri učitavanju kvara')
+          navigate('/issues')
+          return
+        }
+
+        setIssue(data)
+      } catch (error) {
+        console.error('Error:', error)
+        toast.error('Greška pri učitavanju kvara')
+        navigate('/issues')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchIssue()
+  }, [id, navigate])
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span>Učitavanje...</span>
+          </div>
+        </div>
+      </Layout>
+    )
+  }
+
+  if (!issue) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto p-6 text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Kvar nije pronađen</h2>
+          <p className="text-gray-600 mb-4">Traženi kvar ne postoji ili je uklonjen.</p>
+          <button
+            onClick={() => navigate('/issues')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Nazad na listu kvarova
+          </button>
+        </div>
+      </Layout>
+    )
   }
 
   const getStatusColor = (status: string) => {
@@ -62,16 +128,19 @@ export default function IssueDetail() {
               <div className="flex items-center gap-4 text-sm text-gray-600">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" />
-                  {issue.createdAt}
+                  {new Date(issue.created_at).toLocaleDateString('sr-RS')}
                 </span>
-                <span className="flex items-center gap-1">
-                  <User className="w-4 h-4" />
-                  {issue.reportedBy}
-                </span>
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-4 h-4" />
-                  {issue.location}
-                </span>
+                {issue.apartment && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-4 h-4" />
+                    Stan {issue.apartment.apartment_number} - {issue.apartment.floor}. sprat
+                  </span>
+                )}
+                {issue.location_details?.room && (
+                  <span>
+                    {String(issue.location_details.room)}
+                  </span>
+                )}
               </div>
             </div>
             <div className="flex flex-col items-end gap-2">
@@ -96,12 +165,14 @@ export default function IssueDetail() {
             </p>
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Kategorija</h3>
-            <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-              {issue.category}
-            </span>
-          </div>
+          {issue.category && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-2">Kategorija</h3>
+              <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                {issue.category}
+              </span>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4 border-t">
