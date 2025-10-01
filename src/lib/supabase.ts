@@ -60,6 +60,10 @@ export interface Issue {
   created_at: string
   updated_at: string
   resolved_at?: string
+  apartment?: {
+    apartment_number: string
+    floor: number
+  }
 }
 
 export interface IssueImage {

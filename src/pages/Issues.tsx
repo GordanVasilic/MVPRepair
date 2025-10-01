@@ -38,7 +38,7 @@ export default function Issues() {
         .from('issues')
         .select(`
           *,
-          apartments (
+          apartment:apartments (
             apartment_number,
             floor
           )
@@ -280,9 +280,9 @@ export default function Issues() {
                         {new Date(issue.created_at).toLocaleDateString('sr-RS')}
                       </span>
                       
-                      {issue.apartments && (
+                      {issue.apartment && (
                         <span>
-                          Stan {issue.apartments.apartment_number} - {issue.apartments.floor}. sprat
+                          Stan {issue.apartment.apartment_number} - {issue.apartment.floor}. sprat
                         </span>
                       )}
                       
