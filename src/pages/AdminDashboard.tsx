@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Users, AlertTriangle, CheckCircle, Clock, BarChart3, Settings } from 'lucide-react'
+import { Users, AlertTriangle, CheckCircle, Clock, BarChart3 } from 'lucide-react'
 import Layout from '../components/Layout'
 
 export default function AdminDashboard() {
@@ -64,7 +64,7 @@ export default function AdminDashboard() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'overview' | 'users' | 'issues' | 'reports')}
                   className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg ${
                     activeTab === tab.id
                       ? 'bg-blue-100 text-blue-700'

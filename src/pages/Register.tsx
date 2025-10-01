@@ -47,7 +47,7 @@ export default function Register() {
       } else {
         toast.success('Registracija uspješna! Provjerite email za potvrdu.')
       }
-    } catch (error) {
+    } catch {
       toast.error('Greška pri registraciji')
     } finally {
       setIsLoading(false)

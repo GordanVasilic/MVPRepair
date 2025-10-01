@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -6,9 +6,7 @@ import { z } from 'zod'
 import { toast } from 'sonner'
 import { 
   Camera, 
-  Upload, 
   X, 
-  MapPin, 
   AlertTriangle,
   Loader2,
   Sparkles
@@ -55,13 +53,6 @@ export default function ReportIssue() {
     fetchApartments()
   }, [])
 
-  useEffect(() => {
-    // AI analysis when description changes
-    if (watchedDescription && watchedDescription.length > 20) {
-      analyzeIssueWithAI(watchedDescription)
-    }
-  }, [watchedDescription])
-
   const fetchApartments = async () => {
     try {
       const { data } = await supabase
@@ -77,7 +68,7 @@ export default function ReportIssue() {
     }
   }
 
-  const analyzeIssueWithAI = async (description: string) => {
+  const analyzeIssueWithAI = useCallback(async (description: string) => {
     setIsAnalyzing(true)
     try {
       // Simulate AI analysis - in real app, this would call OpenAI API
@@ -117,7 +108,14 @@ export default function ReportIssue() {
     } finally {
       setIsAnalyzing(false)
     }
-  }
+  }, [setValue])
+
+  useEffect(() => {
+    // AI analysis when description changes
+    if (watchedDescription && watchedDescription.length > 20) {
+      analyzeIssueWithAI(watchedDescription)
+    }
+  }, [watchedDescription, analyzeIssueWithAI])
 
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])

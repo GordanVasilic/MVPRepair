@@ -4,7 +4,7 @@ import Layout from '../components/Layout'
 
 export default function ThreeDView() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<'overview' | 'room'>('overview')
+  const [, setViewMode] = useState<'overview' | 'room'>('overview')
 
   // Mock data za prostorije
   const rooms = [

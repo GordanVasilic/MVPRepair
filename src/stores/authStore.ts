@@ -10,7 +10,7 @@ interface AuthState {
   initialize: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   loading: true,
 
@@ -40,14 +40,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       return {}
-    } catch (error) {
+    } catch {
       return { error: 'Greška pri prijavljivanju' }
     }
   },
 
   signUp: async (email: string, password: string, name: string, phone?: string, role: 'tenant' | 'company' = 'tenant') => {
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // All user data is stored in user_metadata
 
       return {}
-    } catch (error) {
+    } catch {
       return { error: 'Greška pri registraciji' }
     }
   },

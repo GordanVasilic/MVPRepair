@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   AlertTriangle, 
@@ -31,11 +31,7 @@ export default function Dashboard() {
   const [recentIssues, setRecentIssues] = useState<Issue[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [user])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     if (!user) return
 
     try {
@@ -48,13 +44,15 @@ export default function Dashboard() {
 
       if (issues) {
         // Calculate stats
-        const stats = {
+        const stats: DashboardStats = {
           totalIssues: issues.length,
           openIssues: issues.filter(issue => issue.status === 'open').length,
           inProgressIssues: issues.filter(issue => issue.status === 'in_progress').length,
           closedIssues: issues.filter(issue => issue.status === 'closed').length,
         }
         setStats(stats)
+
+        // Get recent issues (last 5)
         setRecentIssues(issues.slice(0, 5))
       }
     } catch (error) {
@@ -62,7 +60,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   const getStatusColor = (status: string) => {
     switch (status) {

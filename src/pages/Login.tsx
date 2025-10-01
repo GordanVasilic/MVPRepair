@@ -37,7 +37,7 @@ export default function Login() {
       } else {
         toast.success('Uspješno ste se prijavili!')
       }
-    } catch (error) {
+    } catch {
       toast.error('Greška pri prijavljivanju')
     } finally {
       setIsLoading(false)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { 
   Search, 
@@ -22,15 +22,7 @@ export default function Issues() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [priorityFilter, setPriorityFilter] = useState<string>('all')
 
-  useEffect(() => {
-    fetchIssues()
-  }, [user])
-
-  useEffect(() => {
-    filterIssues()
-  }, [issues, searchTerm, statusFilter, priorityFilter])
-
-  const fetchIssues = async () => {
+  const fetchIssues = useCallback(async () => {
     if (!user) return
 
     try {
@@ -54,9 +46,9 @@ export default function Issues() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [user])
 
-  const filterIssues = () => {
+  const filterIssues = useCallback(() => {
     let filtered = issues
 
     // Search filter
@@ -78,7 +70,15 @@ export default function Issues() {
     }
 
     setFilteredIssues(filtered)
-  }
+  }, [issues, searchTerm, statusFilter, priorityFilter])
+
+  useEffect(() => {
+    fetchIssues()
+  }, [fetchIssues])
+
+  useEffect(() => {
+    filterIssues()
+  }, [filterIssues])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -288,7 +288,7 @@ export default function Issues() {
                       
                       {issue.location_details?.room && (
                         <span>
-                          {issue.location_details.room}
+                          {String(issue.location_details.room)}
                         </span>
                       )}
                     </div>
