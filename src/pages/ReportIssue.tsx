@@ -41,6 +41,8 @@ export default function ReportIssue() {
   const [aiSuggestion, setAiSuggestion] = useState<string>('')
   const [customRoom, setCustomRoom] = useState<string>('')
   const [showCustomRoom, setShowCustomRoom] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{[key: number]: number}>({})
+  const [uploadingImages, setUploadingImages] = useState<boolean>(false)
 
   const {
     register,
@@ -163,6 +165,35 @@ export default function ReportIssue() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index))
   }
 
+  // Function to sanitize filename for URL-safe storage
+  const sanitizeFileName = (fileName: string): string => {
+    // Get file extension
+    const lastDotIndex = fileName.lastIndexOf('.')
+    const name = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName
+    const extension = lastDotIndex !== -1 ? fileName.substring(lastDotIndex) : ''
+    
+    // Replace special characters with their ASCII equivalents
+    const sanitizedName = name
+      .replace(/[ćč]/g, 'c')
+      .replace(/[đ]/g, 'd')
+      .replace(/[š]/g, 's')
+      .replace(/[ž]/g, 'z')
+      .replace(/[ĆČ]/g, 'C')
+      .replace(/[Đ]/g, 'D')
+      .replace(/[Š]/g, 'S')
+      .replace(/[Ž]/g, 'Z')
+      // Replace spaces and other special characters with underscores
+      .replace(/[\s\-\(\)\[\]{}]/g, '_')
+      // Remove any remaining non-alphanumeric characters except underscores
+      .replace(/[^a-zA-Z0-9_]/g, '')
+      // Remove multiple consecutive underscores
+      .replace(/_+/g, '_')
+      // Remove leading/trailing underscores
+      .replace(/^_+|_+$/g, '')
+    
+    return sanitizedName + extension
+  }
+
   const onSubmit = async (data: IssueForm) => {
     setIsSubmitting(true)
     
@@ -206,34 +237,74 @@ export default function ReportIssue() {
 
       // Upload images if any
       if (selectedImages.length > 0 && issue) {
-        for (const image of selectedImages) {
-          const fileName = `${issue.id}/${Date.now()}-${image.name}`
+        setUploadingImages(true)
+        
+        for (let i = 0; i < selectedImages.length; i++) {
+          const image = selectedImages[i]
+          const sanitizedFileName = sanitizeFileName(image.name)
+          const fileName = `${issue.id}/${Date.now()}-${sanitizedFileName}`
           
-          const { error: uploadError } = await supabase.storage
-            .from('issue-images')
-            .upload(fileName, image)
+          // Simulate progress for better UX
+          setUploadProgress(prev => ({ ...prev, [i]: 0 }))
+          
+          // Simulate upload progress
+          const progressInterval = setInterval(() => {
+            setUploadProgress(prev => {
+              const currentProgress = prev[i] || 0
+              if (currentProgress < 90) {
+                return { ...prev, [i]: currentProgress + 10 }
+              }
+              return prev
+            })
+          }, 100)
+          
+          try {
+            const { error: uploadError } = await supabase.storage
+              .from('issue-images')
+              .upload(fileName, image)
 
-          if (uploadError) {
-            console.error('Error uploading image:', uploadError)
-            toast.error(`Greška pri upload-u slike: ${uploadError.message}`)
-          } else {
+            clearInterval(progressInterval)
+            setUploadProgress(prev => ({ ...prev, [i]: 100 }))
+
+            if (uploadError) {
+              console.error('Error uploading image:', uploadError)
+              toast.error(`Greška pri upload-u slike ${i + 1}: ${uploadError.message}`)
+              continue // Continue with next image instead of stopping
+            }
+
             const { data: { publicUrl } } = supabase.storage
               .from('issue-images')
               .getPublicUrl(fileName)
+
+            console.log('💾 Saving image record to database:', {
+              issue_id: issue.id,
+              image_url: publicUrl,
+              image_name: sanitizedFileName
+            })
 
             const { error: insertError } = await supabase
               .from('issue_images')
               .insert({
                 issue_id: issue.id,
                 image_url: publicUrl,
-                image_name: image.name
+                image_name: sanitizedFileName
               })
 
             if (insertError) {
-              console.error('Error saving image record:', insertError)
+              console.error('❌ Error saving image record:', insertError)
+              toast.error(`Greška pri čuvanju slike ${i + 1} u bazu`)
+            } else {
+              console.log('✅ Successfully saved image record to database')
             }
+          } catch (error) {
+            clearInterval(progressInterval)
+            console.error('Unexpected error uploading image:', error)
+            toast.error(`Neočekivana greška pri upload-u slike ${i + 1}`)
           }
         }
+        
+        setUploadingImages(false)
+        setUploadProgress({})
       }
 
       toast.success('Kvar je uspješno prijavljen!')
@@ -494,9 +565,26 @@ export default function ReportIssue() {
                         type="button"
                         onClick={() => removeImage(index)}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                        disabled={uploadingImages}
                       >
                         <X className="h-4 w-4" />
                       </button>
+                      
+                      {/* Upload progress */}
+                      {uploadingImages && uploadProgress[index] !== undefined && (
+                        <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
+                          <div className="text-center text-white">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-1" />
+                            <div className="text-xs">{uploadProgress[index]}%</div>
+                            <div className="w-16 bg-gray-200 rounded-full h-1 mt-1">
+                              <div 
+                                className="bg-blue-600 h-1 rounded-full transition-all duration-300" 
+                                style={{ width: `${uploadProgress[index]}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
