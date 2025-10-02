@@ -15,7 +15,7 @@ export default function Profile() {
     name: '',
     email: '',
     phone: '',
-    role: 'tenant'
+    role: 'tenant' as 'tenant' | 'company'
   })
 
   // Učitaj podatke korisnika kada se komponenta učita
@@ -25,7 +25,7 @@ export default function Profile() {
         name: user.name || '',
         email: user.email || '',
         phone: user.phone || '',
-        role: user.role || 'tenant'
+        role: (user.role || 'tenant') as 'tenant' | 'company'
       })
     }
   }, [user])
@@ -132,8 +132,7 @@ export default function Profile() {
                   <h2 className="text-xl font-semibold text-gray-900">{formData.name || 'Korisnik'}</h2>
                   <p className="text-gray-600 capitalize">
                     {formData.role === 'tenant' ? 'Stanar' : 
-                     formData.role === 'technician' ? 'Tehničar' : 
-                     formData.role === 'admin' ? 'Administrator' : 'Korisnik'}
+                     formData.role === 'company' ? 'Kompanija' : 'Korisnik'}
                   </p>
                 </div>
               </div>

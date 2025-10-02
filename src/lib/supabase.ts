@@ -20,6 +20,13 @@ export interface User {
     name?: string
     phone?: string
     role?: 'tenant' | 'company'
+    addresses?: any[]
+    address?: string
+    city?: string
+    apartment?: string
+    floor?: string
+    entrance?: string
+    notes?: string
   }
 }
 

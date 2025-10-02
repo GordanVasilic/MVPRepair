@@ -295,9 +295,9 @@ export default function IssueDetail() {
                       <Building className="w-5 h-5 text-gray-400 mt-1" />
                       <div>
                         <label className="block text-sm font-medium text-gray-500 mb-1">Adresa</label>
-                        <p className="text-gray-900">{issue.location_details.address}</p>
+                        <p className="text-gray-900">{String(issue.location_details.address)}</p>
                         {issue.location_details.city && (
-                          <p className="text-gray-600 text-sm">{issue.location_details.city}</p>
+                          <p className="text-gray-600 text-sm">{String(issue.location_details.city)}</p>
                         )}
                       </div>
                     </div>
@@ -313,13 +313,13 @@ export default function IssueDetail() {
                         <label className="block text-sm font-medium text-gray-500 mb-1">Detalji stana</label>
                         <div className="space-y-1">
                           {issue.location_details.apartment && (
-                            <p className="text-gray-900">Stan: {issue.location_details.apartment}</p>
+                            <p className="text-gray-900">Stan: {String(issue.location_details.apartment)}</p>
                           )}
                           {issue.location_details.floor && (
-                            <p className="text-gray-900">Sprat: {issue.location_details.floor}</p>
+                            <p className="text-gray-900">Sprat: {String(issue.location_details.floor)}</p>
                           )}
                           {issue.location_details.entrance && (
-                            <p className="text-gray-900">Ulaz: {issue.location_details.entrance}</p>
+                            <p className="text-gray-900">Ulaz: {String(issue.location_details.entrance)}</p>
                           )}
                         </div>
                       </div>
@@ -345,7 +345,7 @@ export default function IssueDetail() {
               {issue.location_details?.notes && (
                 <div className="mt-4">
                   <label className="block text-sm font-medium text-gray-500 mb-1">Dodatne napomene o lokaciji</label>
-                  <p className="text-gray-900 bg-gray-50 p-3 rounded-md">{issue.location_details.notes}</p>
+                  <p className="text-gray-900 bg-gray-50 p-3 rounded-md">{String(issue.location_details.notes)}</p>
                 </div>
               )}
             </div>
