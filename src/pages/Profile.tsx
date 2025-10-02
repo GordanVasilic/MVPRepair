@@ -1,42 +1,99 @@
-import { useState } from 'react'
-import { User, Mail, Phone, MapPin, Camera, Save, Edit2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { User, Mail, Phone, Camera, Save, Edit2 } from 'lucide-react'
 import Layout from '../components/Layout'
+import { AddressManager } from '../components/AddressManager'
+import { useAuthStore } from '../stores/authStore'
+import { supabase } from '../lib/supabase'
 
 export default function Profile() {
+  const { user, updateUser } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
+  
   const [formData, setFormData] = useState({
-    name: 'Marko Petrović',
-    email: 'marko.petrovic@example.com',
-    phone: '+387 65 123 456',
-    address: 'Zmaja od Bosne 12, Sarajevo',
-    apartment: 'Stan 15, Zgrada A',
-    role: 'resident'
+    name: '',
+    email: '',
+    phone: '',
+    role: 'tenant'
   })
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Učitaj podatke korisnika kada se komponenta učita
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        role: user.role || 'tenant'
+      })
+    }
+  }, [user])
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     })
   }
 
-  const handleSave = () => {
-    // Ovdje će biti API poziv za ažuriranje profila
-    setIsEditing(false)
-    // Pokazati success poruku
+  const handleSave = async () => {
+    if (!user) return
+    
+    setLoading(true)
+    setMessage(null)
+    
+    try {
+      // Ažuriraj user_metadata u Supabase Auth
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          name: formData.name,
+          phone: formData.phone,
+          role: formData.role
+        }
+      })
+
+      if (error) {
+        throw error
+      }
+
+      // Ažuriraj lokalni store sa novim podacima
+      updateUser({
+        name: formData.name,
+        phone: formData.phone,
+        user_metadata: {
+          ...user?.user_metadata,
+          name: formData.name,
+          phone: formData.phone,
+          role: formData.role
+        }
+      })
+
+      setMessage({ type: 'success', text: 'Profil je uspješno ažuriran!' })
+      setIsEditing(false)
+      
+      // Sakrij poruku nakon 3 sekunde
+      setTimeout(() => setMessage(null), 3000)
+      
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Greška pri ažuriranju profila' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleCancel = () => {
     // Reset form data to original values
-    setFormData({
-      name: 'Marko Petrović',
-      email: 'marko.petrovic@example.com',
-      phone: '+387 65 123 456',
-      address: 'Zmaja od Bosne 12, Sarajevo',
-      apartment: 'Stan 15, Zgrada A',
-      role: 'resident'
-    })
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        role: user.role || 'tenant'
+      })
+    }
     setIsEditing(false)
+    setMessage(null)
   }
 
   return (
@@ -46,6 +103,17 @@ export default function Profile() {
           <h1 className="text-2xl font-bold text-gray-900">Moj profil</h1>
           <p className="text-gray-600">Upravljajte svojim ličnim podacima</p>
         </div>
+
+        {/* Success/Error Message */}
+        {message && (
+          <div className={`mb-6 p-4 rounded-lg ${
+            message.type === 'success' 
+              ? 'bg-green-50 text-green-800 border border-green-200' 
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}>
+            {message.text}
+          </div>
+        )}
 
         <div className="bg-white rounded-lg shadow-sm border">
           {/* Header */}
@@ -61,10 +129,11 @@ export default function Profile() {
                   </button>
                 </div>
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">{formData.name}</h2>
+                  <h2 className="text-xl font-semibold text-gray-900">{formData.name || 'Korisnik'}</h2>
                   <p className="text-gray-600 capitalize">
-                    {formData.role === 'resident' ? 'Stanar' : 
-                     formData.role === 'maintenance' ? 'Održavanje' : 'Administrator'}
+                    {formData.role === 'tenant' ? 'Stanar' : 
+                     formData.role === 'technician' ? 'Tehničar' : 
+                     formData.role === 'admin' ? 'Administrator' : 'Korisnik'}
                   </p>
                 </div>
               </div>
@@ -87,18 +156,20 @@ export default function Profile() {
                   </button>
                   <button
                     onClick={handleSave}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
-                    Sačuvaj
+                    {loading ? 'Čuva...' : 'Sačuvaj'}
                   </button>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Profile Form */}
+          {/* Basic Profile Form */}
           <div className="p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Osnovni podaci</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Ime i prezime */}
               <div>
@@ -132,12 +203,11 @@ export default function Profile() {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      !isEditing ? 'bg-gray-50 text-gray-500' : 'bg-white'
-                    }`}
+                    disabled={true} // Email se ne može mijenjati
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg bg-gray-50 text-gray-500"
                   />
                 </div>
+                <p className="text-xs text-gray-500 mt-1">Email adresa se ne može mijenjati</p>
               </div>
 
               {/* Telefon */}
@@ -159,44 +229,14 @@ export default function Profile() {
                   />
                 </div>
               </div>
-
-              {/* Adresa */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Adresa
-                </label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    disabled={!isEditing}
-                    className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      !isEditing ? 'bg-gray-50 text-gray-500' : 'bg-white'
-                    }`}
-                  />
-                </div>
-              </div>
-
-              {/* Stan/Apartman */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Stan/Apartman
-                </label>
-                <input
-                  type="text"
-                  name="apartment"
-                  value={formData.apartment}
-                  onChange={handleInputChange}
-                  disabled={!isEditing}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    !isEditing ? 'bg-gray-50 text-gray-500' : 'bg-white'
-                  }`}
-                />
-              </div>
             </div>
+          </div>
+        </div>
+
+        {/* Address Management Section */}
+        <div className="mt-6 bg-white rounded-lg shadow-sm border">
+          <div className="p-6">
+            <AddressManager disabled={false} />
           </div>
         </div>
 

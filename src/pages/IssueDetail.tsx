@@ -88,19 +88,39 @@ export default function IssueDetail() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
+      case 'open': return 'bg-yellow-100 text-yellow-800'
       case 'in_progress': return 'bg-blue-100 text-blue-800'
-      case 'completed': return 'bg-green-100 text-green-800'
+      case 'closed': return 'bg-green-100 text-green-800'
       default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'open': return 'Otvoren'
+      case 'in_progress': return 'U toku'
+      case 'closed': return 'Zatvoren'
+      default: return status
     }
   }
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'text-red-600'
+      case 'urgent': return 'text-red-600'
+      case 'high': return 'text-orange-600'
       case 'medium': return 'text-yellow-600'
       case 'low': return 'text-green-600'
       default: return 'text-gray-600'
+    }
+  }
+
+  const getPriorityText = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'Hitno'
+      case 'high': return 'Visok prioritet'
+      case 'medium': return 'Srednji prioritet'
+      case 'low': return 'Nizak prioritet'
+      default: return priority
     }
   }
 
@@ -145,14 +165,12 @@ export default function IssueDetail() {
             </div>
             <div className="flex flex-col items-end gap-2">
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(issue.status)}`}>
-                {issue.status === 'pending' ? 'Na čekanju' : 
-                 issue.status === 'in_progress' ? 'U toku' : 'Završeno'}
+                {getStatusText(issue.status)}
               </span>
               <div className="flex items-center gap-1">
                 <AlertCircle className={`w-4 h-4 ${getPriorityColor(issue.priority)}`} />
                 <span className={`text-sm font-medium ${getPriorityColor(issue.priority)}`}>
-                  {issue.priority === 'high' ? 'Visok prioritet' :
-                   issue.priority === 'medium' ? 'Srednji prioritet' : 'Nizak prioritet'}
+                  {getPriorityText(issue.priority)}
                 </span>
               </div>
             </div>

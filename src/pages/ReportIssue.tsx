@@ -9,30 +9,38 @@ import {
   X, 
   AlertTriangle,
   Loader2,
-  Sparkles
+  Sparkles,
+  Settings
 } from 'lucide-react'
 import Layout from '../components/Layout'
-import { supabase, type Apartment } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../stores/authStore'
 
 const issueSchema = z.object({
   title: z.string().min(5, 'Naslov mora imati najmanje 5 karaktera'),
   description: z.string().min(10, 'Opis mora imati najmanje 10 karaktera'),
-  apartment_id: z.string().min(1, 'Molimo odaberite stan'),
+  address_id: z.string().min(1, 'Molimo odaberite adresu'),
   room: z.string().min(1, 'Molimo odaberite prostoriju'),
+  category: z.string().min(1, 'Molimo odaberite kategoriju'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']),
+}).refine((data) => {
+  // If room is "Drugo", we need to validate customRoom separately in the component
+  return true;
+}, {
+  message: "Validacija prostorije"
 })
 
 type IssueForm = z.infer<typeof issueSchema>
 
 export default function ReportIssue() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
-  const [apartments, setApartments] = useState<Apartment[]>([])
+  const { user, addresses } = useAuthStore()
   const [selectedImages, setSelectedImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [aiSuggestion, setAiSuggestion] = useState<string>('')
+  const [customRoom, setCustomRoom] = useState<string>('')
+  const [showCustomRoom, setShowCustomRoom] = useState(false)
 
   const {
     register,
@@ -43,30 +51,45 @@ export default function ReportIssue() {
   } = useForm<IssueForm>({
     resolver: zodResolver(issueSchema),
     defaultValues: {
-      priority: 'medium'
+      priority: 'medium',
+      address_id: addresses.find(addr => addr.isDefault)?.id || ''
     }
   })
 
   const watchedDescription = watch('description')
+  const selectedAddressId = watch('address_id')
+  const selectedRoom = watch('room')
+  const selectedAddress = addresses.find(addr => addr.id === selectedAddressId)
 
-  useEffect(() => {
-    fetchApartments()
-  }, [])
+  // Predefined rooms for each address
+  const availableRooms = [
+    'Dnevna soba',
+    'Kuhinja',
+    'Spavaća soba',
+    'Kupatilo',
+    'WC',
+    'Hodnik',
+    'Balkon',
+    'Terasa',
+    'Ostava',
+    'Garaža',
+    'Drugo'
+  ]
 
-  const fetchApartments = async () => {
-    try {
-      const { data } = await supabase
-        .from('apartments')
-        .select('*')
-        .order('apartment_number')
-
-      if (data) {
-        setApartments(data)
-      }
-    } catch (error) {
-      console.error('Error fetching apartments:', error)
-    }
-  }
+  // Predefined categories for issues
+  const availableCategories = [
+    'Struja/Elektrika',
+    'Voda/Vodovod',
+    'Klima/Grijanje',
+    'Lift/Elevator',
+    'Vrata/Prozori',
+    'Krov/Fasada',
+    'Podovi/Pločice',
+    'Sanitarije/Kupatilo',
+    'Kuhinja/Aparati',
+    'Sigurnost/Brave',
+    'Ostalo'
+  ]
 
   const analyzeIssueWithAI = useCallback(async (description: string) => {
     setIsAnalyzing(true)
@@ -117,6 +140,16 @@ export default function ReportIssue() {
     }
   }, [watchedDescription, analyzeIssueWithAI])
 
+  // Handle room selection change
+  useEffect(() => {
+    if (selectedRoom === 'Drugo') {
+      setShowCustomRoom(true)
+    } else {
+      setShowCustomRoom(false)
+      setCustomRoom('')
+    }
+  }, [selectedRoom])
+
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length + selectedImages.length > 5) {
@@ -132,19 +165,38 @@ export default function ReportIssue() {
 
   const onSubmit = async (data: IssueForm) => {
     setIsSubmitting(true)
+    
+    // Validate custom room if "Drugo" is selected
+    if (data.room === 'Drugo' && !customRoom.trim()) {
+      toast.error('Molimo unesite naziv prostorije')
+      setIsSubmitting(false)
+      return
+    }
+    
     try {
+      const selectedAddress = addresses.find(addr => addr.id === data.address_id)
+      
+      // Determine the final room value
+      const finalRoom = data.room === 'Drugo' ? customRoom.trim() : data.room
+      
       // Create issue
       const { data: issue, error } = await supabase
         .from('issues')
         .insert({
           user_id: user?.id,
-          apartment_id: data.apartment_id,
           title: data.title,
           description: data.description,
+          category: data.category,
           priority: data.priority,
           status: 'open',
           location_details: {
-            room: data.room
+            address: selectedAddress?.address,
+            city: selectedAddress?.city,
+            apartment: selectedAddress?.apartment,
+            floor: selectedAddress?.floor,
+            entrance: selectedAddress?.entrance,
+            room: finalRoom,
+            notes: selectedAddress?.notes
           }
         })
         .select()
@@ -195,8 +247,7 @@ export default function ReportIssue() {
     }
   }
 
-  const selectedApartment = apartments.find(apt => apt.id === watch('apartment_id'))
-  const availableRooms = selectedApartment?.rooms_config?.rooms || []
+
 
   return (
     <Layout>
@@ -210,29 +261,67 @@ export default function ReportIssue() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Apartment selection */}
+            {/* Address selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Stan
+                Adresa
               </label>
-              <select
-                {...register('apartment_id')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Odaberite stan</option>
-                {apartments.map((apartment) => (
-                  <option key={apartment.id} value={apartment.id}>
-                    Stan {apartment.apartment_number} - {apartment.floor}. sprat
-                  </option>
-                ))}
-              </select>
-              {errors.apartment_id && (
-                <p className="mt-1 text-sm text-red-600">{errors.apartment_id.message}</p>
+              <div className="flex gap-2">
+                <select
+                  {...register('address_id')}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 max-w-full"
+                  style={{ maxWidth: '100%' }}
+                >
+                  <option value="">Odaberite adresu</option>
+                  {addresses.map((address) => {
+                    const displayText = `${address.name} - ${address.city}, ${address.address}`
+                    const truncatedText = displayText.length > 50 
+                      ? displayText.substring(0, 47) + '...' 
+                      : displayText
+                    return (
+                      <option 
+                        key={address.id} 
+                        value={address.id}
+                        title={displayText}
+                        style={{ 
+                          maxWidth: '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {truncatedText}
+                      </option>
+                    )
+                  })}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => navigate('/profile')}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center"
+                  title="Upravljaj adresama"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              </div>
+              {errors.address_id && (
+                <p className="mt-1 text-sm text-red-600">{errors.address_id.message}</p>
+              )}
+              {selectedAddress && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                  <p className="text-sm text-gray-600">
+                    <strong>{selectedAddress.name}</strong><br />
+                    {selectedAddress.address}, {selectedAddress.city}
+                    {selectedAddress.apartment && `, Stan: ${selectedAddress.apartment}`}
+                    {selectedAddress.floor && `, Sprat: ${selectedAddress.floor}`}
+                    {selectedAddress.entrance && `, Ulaz: ${selectedAddress.entrance}`}
+                  </p>
+                </div>
               )}
             </div>
 
             {/* Room selection */}
-            {selectedApartment && (
+            {selectedAddress && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Prostorija
@@ -251,6 +340,25 @@ export default function ReportIssue() {
                 {errors.room && (
                   <p className="mt-1 text-sm text-red-600">{errors.room.message}</p>
                 )}
+                
+                {/* Custom room input */}
+                {showCustomRoom && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Unesite naziv prostorije
+                    </label>
+                    <input
+                      type="text"
+                      value={customRoom}
+                      onChange={(e) => setCustomRoom(e.target.value)}
+                      placeholder="npr. Radionica, Podrum, Tavanski prostor..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {selectedRoom === 'Drugo' && !customRoom && (
+                      <p className="mt-1 text-sm text-red-600">Molimo unesite naziv prostorije</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -267,6 +375,27 @@ export default function ReportIssue() {
               />
               {errors.title && (
                 <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
+              )}
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Kategorija
+              </label>
+              <select
+                {...register('category')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Odaberite kategoriju</option>
+                {availableCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              {errors.category && (
+                <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
               )}
             </div>
 
