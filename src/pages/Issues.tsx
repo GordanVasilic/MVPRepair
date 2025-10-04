@@ -7,7 +7,7 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle,
-  Eye
+  User
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { supabase, type Issue } from '../lib/supabase'
@@ -84,6 +84,8 @@ export default function Issues() {
     switch (status) {
       case 'open':
         return <AlertTriangle className="h-4 w-4 text-red-500" />
+      case 'assigned_to_master':
+        return <User className="h-4 w-4 text-purple-500" />
       case 'in_progress':
         return <Clock className="h-4 w-4 text-yellow-500" />
       case 'closed':
@@ -97,6 +99,8 @@ export default function Issues() {
     switch (status) {
       case 'open':
         return 'text-red-600 bg-red-100'
+      case 'assigned_to_master':
+        return 'text-purple-600 bg-purple-100'
       case 'in_progress':
         return 'text-yellow-600 bg-yellow-100'
       case 'closed':
@@ -110,6 +114,8 @@ export default function Issues() {
     switch (status) {
       case 'open':
         return 'Otvoren'
+      case 'assigned_to_master':
+        return 'Dodijeljen majstoru'
       case 'in_progress':
         return 'U toku'
       case 'closed':
@@ -207,6 +213,7 @@ export default function Issues() {
             >
               <option value="all">Svi statusi</option>
               <option value="open">Otvorene</option>
+              <option value="assigned_to_master">Dodijeljene majstoru</option>
               <option value="in_progress">U toku</option>
               <option value="closed">Zatvorene</option>
             </select>
@@ -260,57 +267,59 @@ export default function Issues() {
         ) : (
           <div className="space-y-4">
             {filteredIssues.map((issue) => (
-              <div key={issue.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+              <div 
+                key={issue.id} 
+                className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md hover:bg-gray-50 transition-all cursor-pointer"
+                onClick={() => window.location.href = `/issues/${issue.id}`}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                  {/* Kolona 1: Naslov i opis */}
+                  <div className="lg:col-span-1">
                     <div className="flex items-center space-x-3 mb-2">
                       {getStatusIcon(issue.status)}
                       <h3 className="text-lg font-medium text-gray-900">
                         {issue.title}
                       </h3>
                     </div>
-                    
-                    <p className="text-gray-600 mb-4 line-clamp-2">
+                    <p className="text-gray-600 line-clamp-2">
                       {issue.description}
                     </p>
-                    
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <span className="flex items-center">
-                        <Calendar className="h-4 w-4 mr-1" />
-                        {new Date(issue.created_at).toLocaleDateString('sr-RS')}
-                      </span>
-                      
-                      {issue.apartment && (
-                        <span>
-                          Stan {issue.apartment.apartment_number} - {issue.apartment.floor}. sprat
-                        </span>
-                      )}
-                      
-                      {issue.location_details?.room && (
-                        <span>
-                          {String(issue.location_details.room)}
-                        </span>
-                      )}
-                    </div>
                   </div>
                   
-                  <div className="flex flex-col items-end space-y-2 ml-6">
-                    <div className="flex space-x-2">
+                  {/* Kolona 2: Datum i lokacija */}
+                  <div className="flex flex-col space-y-1">
+                    <span className="flex items-center text-sm text-gray-500">
+                      <Calendar className="h-4 w-4 mr-1" />
+                      {new Date(issue.created_at).toLocaleDateString('sr-RS')}
+                    </span>
+                    
+                    {issue.apartment && (
+                      <span className="text-sm text-gray-500">
+                        Stan {issue.apartment.apartment_number} - {issue.apartment.floor}. sprat
+                      </span>
+                    )}
+                    
+                    {issue.location_details?.room && (
+                      <span className="text-sm text-gray-500">
+                        {String(issue.location_details.room)}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Kolona 3: Status i Prioritet */}
+                  <div className="flex flex-col space-y-2 lg:items-end">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500 font-medium">Status:</span>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(issue.status)}`}>
                         {getStatusText(issue.status)}
                       </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-gray-500 font-medium">Prioritet:</span>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(issue.priority)}`}>
                         {getPriorityText(issue.priority)}
                       </span>
                     </div>
-                    
-                    <Link
-                      to={`/issues/${issue.id}`}
-                      className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      Detalji
-                    </Link>
                   </div>
                 </div>
               </div>

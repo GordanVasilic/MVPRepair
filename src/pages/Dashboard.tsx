@@ -83,6 +83,8 @@ export default function Dashboard() {
     switch (status) {
       case 'open':
         return 'Otvoren'
+      case 'assigned_to_master':
+        return 'Dodijeljen majstoru'
       case 'in_progress':
         return 'U toku'
       case 'closed':

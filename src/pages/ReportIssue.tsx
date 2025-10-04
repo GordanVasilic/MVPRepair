@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,7 +10,9 @@ import {
   AlertTriangle,
   Loader2,
   Sparkles,
-  Settings
+  Settings,
+  CheckCircle,
+  XCircle
 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
@@ -32,17 +34,45 @@ const issueSchema = z.object({
 
 type IssueForm = z.infer<typeof issueSchema>
 
+interface AIAnalysis {
+  category: string
+  priority: string
+  confidence: number
+  reasoning: string
+  estimatedCost?: string
+  estimatedTime?: string
+  solution?: string
+  room?: string
+}
+
+// Dodajemo interface za keširan opis slike
+interface CachedImageAnalysis {
+  imageHashes: string[]
+  description: string
+  timestamp: number
+}
+
 export default function ReportIssue() {
   const navigate = useNavigate()
   const { user, addresses } = useAuthStore()
   const [selectedImages, setSelectedImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [aiSuggestion, setAiSuggestion] = useState<string>('')
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
+  
+  // Debug: Log aiAnalysis state changes
+  useEffect(() => {
+    console.log('🧠 aiAnalysis state changed:', aiAnalysis)
+  }, [aiAnalysis])
   const [customRoom, setCustomRoom] = useState<string>('')
   const [showCustomRoom, setShowCustomRoom] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{[key: number]: number}>({})
   const [uploadingImages, setUploadingImages] = useState<boolean>(false)
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Dodajemo state za keširanje analize slike
+  const [cachedImageAnalysis, setCachedImageAnalysis] = useState<CachedImageAnalysis | null>(null)
+  const [imageBase64Cache, setImageBase64Cache] = useState<string[]>([])
 
   const {
     register,
@@ -58,6 +88,7 @@ export default function ReportIssue() {
     }
   })
 
+  const watchedTitle = watch('title')
   const watchedDescription = watch('description')
   const selectedAddressId = watch('address_id')
   const selectedRoom = watch('room')
@@ -93,54 +124,296 @@ export default function ReportIssue() {
     'Ostalo'
   ]
 
-  const analyzeIssueWithAI = useCallback(async (description: string) => {
-    setIsAnalyzing(true)
-    try {
-      // Simulate AI analysis - in real app, this would call OpenAI API
-      await new Promise(resolve => setTimeout(resolve, 1500))
+  // Function to resize image if it's too large
+  const resizeImage = (file: File, maxWidth: number = 800, maxHeight: number = 600, quality: number = 0.8): Promise<File> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
       
-      // Mock AI suggestions based on keywords
-      let suggestion = ''
-      let priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
-      
-      const desc = description.toLowerCase()
-      
-      if (desc.includes('voda') || desc.includes('curi') || desc.includes('poplava')) {
-        suggestion = 'Detektovan problem sa vodom - preporučujem hitnu intervenciju'
-        priority = 'urgent'
-      } else if (desc.includes('struja') || desc.includes('elektrika') || desc.includes('prekidač')) {
-        suggestion = 'Električni problem - potrebna je provjera od strane električara'
-        priority = 'high'
-      } else if (desc.includes('grijanje') || desc.includes('radijator') || desc.includes('hladno')) {
-        suggestion = 'Problem sa grijanjem - kontaktirajte tehničku službu'
-        priority = 'high'
-      } else if (desc.includes('vrata') || desc.includes('prozor') || desc.includes('kvaka')) {
-        suggestion = 'Mehanički problem - potrebna je intervencija majstora'
-        priority = 'medium'
-      } else if (desc.includes('buka') || desc.includes('zvuk') || desc.includes('glasno')) {
-        suggestion = 'Problem sa bukom - možda je potrebna izolacija'
-        priority = 'low'
-      } else {
-        suggestion = 'Opći kvar - preporučujem detaljniji opis problema'
-        priority = 'medium'
+      img.onload = () => {
+        // Calculate new dimensions
+        let { width, height } = img
+        
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height)
+          width *= ratio
+          height *= ratio
+        }
+        
+        canvas.width = width
+        canvas.height = height
+        
+        // Draw and compress
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const resizedFile = new File([blob], file.name, {
+              type: file.type,
+              lastModified: Date.now()
+            })
+            resolve(resizedFile)
+          } else {
+            resolve(file) // Fallback to original if resize fails
+          }
+        }, file.type, quality)
       }
       
-      setAiSuggestion(suggestion)
-      setValue('priority', priority)
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  // Function to convert image to base64
+  const convertImageToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        // Remove the data:image/jpeg;base64, prefix to get just the base64 string
+        const base64 = result.split(',')[1]
+        resolve(base64)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Funkcija za kreiranje hash-a slike (stabilniji hash na osnovu sadržaja)
+  const createImageHash = (file: File): string => {
+    // Koristimo samo ime i veličinu jer se lastModified mijenja
+    return `${file.name}_${file.size}`
+  }
+
+  // Funkcija za provjeru da li su slike promijenjene
+  const areImagesChanged = (currentImages: File[]): boolean => {
+    if (!cachedImageAnalysis) {
+      console.log('🔍 areImagesChanged: Nema keša - vraćam true')
+      return true
+    }
+    
+    const currentHashes = currentImages.map(createImageHash).sort() // Sortiramo za konzistentnost
+    const cachedHashes = [...cachedImageAnalysis.imageHashes].sort() // Sortiramo keš hash-ove
+    
+    console.log('🔍 areImagesChanged: Current hashes:', currentHashes)
+    console.log('🔍 areImagesChanged: Cached hashes:', cachedHashes)
+    
+    if (currentHashes.length !== cachedHashes.length) {
+      console.log('🔍 areImagesChanged: Različit broj slika - vraćam true')
+      return true
+    }
+    
+    const changed = !currentHashes.every((hash, index) => hash === cachedHashes[index])
+    console.log('🔍 areImagesChanged: Slike promijenjene?', changed)
+    return changed
+  }
+
+  // Optimizovana AI analiza koja koristi keširan opis slike
+  const analyzeIssueWithAI = useCallback(async (title: string, description: string, forceImageAnalysis: boolean = false, imagesToAnalyze?: File[]) => {
+    console.log('🚀 analyzeIssueWithAI POZVANA - title:', title, 'description:', description, 'forceImageAnalysis:', forceImageAnalysis)
+    
+    // Koristimo proslijeđene slike ili trenutne selectedImages
+    const imagesToUse = imagesToAnalyze || selectedImages
+    console.log('🚀 isAnalyzing:', isAnalyzing, 'imagesToUse.length:', imagesToUse.length)
+    
+    if (isAnalyzing) {
+      console.log('⏸️ Analiza već u toku - preskačem')
+      return
+    }
+    
+    if (!title && !description && imagesToUse.length === 0) {
+      console.log('❌ Nema title, description ni slika - izlazim')
+      return
+    }
+    
+    const combinedText = [title, description].filter(Boolean).join(' ')
+    console.log('📝 Combined text:', combinedText, 'length:', combinedText.trim().length)
+    
+    if (combinedText.trim().length < 5 && imagesToUse.length === 0) {
+      console.log('❌ Tekst prekratak i nema slika - izlazim')
+      return
+    }
+
+    console.log('✅ Sve provjere prošle - pokrećem analizu')
+    setIsAnalyzing(true)
+    try {
+      console.log(`🔍 Analyzing with ${imagesToUse.length} images and text: "${combinedText.substring(0, 50)}..."`)
+      console.log(`🔍 Force image analysis: ${forceImageAnalysis}`)
       
+      let imageDescription = ''
+      let base64Images: string[] = []
+      
+      // Provjeri da li trebamo analizirati slike
+      if (imagesToUse.length > 0) {
+        const imagesChanged = areImagesChanged(imagesToUse)
+        
+        console.log('🔍 Provjera keša: imagesChanged =', imagesChanged, 'forceImageAnalysis =', forceImageAnalysis, 'cachedImageAnalysis =', !!cachedImageAnalysis)
+        
+        if (imagesChanged || forceImageAnalysis || !cachedImageAnalysis) {
+          console.log('📸 Analiziram slike jer su promijenjene ili nema keša')
+          // Konvertuj slike u base64
+          base64Images = await Promise.all(
+            imagesToUse.map(async (image) => {
+              try {
+                const resizedImage = await resizeImage(image)
+                return await convertImageToBase64(resizedImage)
+              } catch (error) {
+                console.error('Error converting image to base64:', error)
+                return null
+              }
+            })
+          ).then(results => results.filter(Boolean) as string[])
+          
+          // Sačuvaj base64 u cache
+          setImageBase64Cache(base64Images)
+        } else {
+          console.log('💾 Koristim keširan opis slike:', cachedImageAnalysis.description.substring(0, 50) + '...')
+          imageDescription = cachedImageAnalysis.description
+          base64Images = imageBase64Cache
+        }
+      }
+
+      const payload = {
+        text: combinedText,
+        images: base64Images,
+        cachedImageDescription: imageDescription // Dodajemo keširan opis
+      }
+
+      const response = await fetch('/api/ai/analyze-issue', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('AI analysis result:', result)
+      
+      // Backend returns { success: true, data: AIAnalysis, imageDescription?: string }
+      if (result.success && result.data) {
+        const analysis: AIAnalysis = result.data
+        console.log('Setting AI analysis state:', analysis)
+        setAiAnalysis(analysis)
+        
+        // Ako je vraćen novi opis slike, sačuvaj ga u keš
+        if (result.imageDescription && imagesToUse.length > 0) {
+          const imageHashes = imagesToUse.map(createImageHash).sort() // Sortiramo hash-ove
+          console.log('💾 Čuvam u keš - Image hashes:', imageHashes)
+          console.log('💾 Čuvam u keš - Description:', result.imageDescription.substring(0, 50) + '...')
+          setCachedImageAnalysis({
+            imageHashes,
+            description: result.imageDescription,
+            timestamp: Date.now()
+          })
+          console.log('✅ Sačuvan novi opis slike u keš')
+        }
+        
+        // Auto-fill the form with AI suggestions
+        setValue('category', analysis.category)
+        setValue('priority', analysis.priority as 'low' | 'medium' | 'high' | 'urgent')
+        
+        // Auto-select room if AI suggested one
+        if (analysis.room) {
+          setValue('room', analysis.room)
+        }
+        
+        console.log('✅ AI analysis state should be set now')
+      } else {
+        console.log('⚠️ No valid analysis data received:', result)
+      }
     } catch (error) {
-      console.error('Error analyzing issue:', error)
+      console.error('❌ AI analysis failed:', error)
+      toast.error('Greška pri AI analizi')
+      // Fallback to basic keyword analysis
+      const basicAnalysis = basicKeywordAnalysis(combinedText)
+      if (basicAnalysis) {
+        setAiAnalysis(basicAnalysis)
+        setValue('category', basicAnalysis.category)
+        setValue('priority', basicAnalysis.priority as 'low' | 'medium' | 'high' | 'urgent')
+        if (basicAnalysis.room) {
+          setValue('room', basicAnalysis.room)
+        }
+      }
     } finally {
       setIsAnalyzing(false)
+      console.log('🏁 AI analysis finished - isAnalyzing set to false')
     }
-  }, [setValue])
+  }, [setValue, selectedImages, cachedImageAnalysis, imageBase64Cache])
 
-  useEffect(() => {
-    // AI analysis when description changes
-    if (watchedDescription && watchedDescription.length > 20) {
-      analyzeIssueWithAI(watchedDescription)
+  // Uklanjamo legacy funkciju jer sada koristimo optimizovanu analyzeIssueWithAI direktno
+
+  // Basic keyword analysis fallback
+  const basicKeywordAnalysis = (text: string): AIAnalysis => {
+    const lowerText = text.toLowerCase()
+    
+    if (lowerText.includes('voda') || lowerText.includes('curi') || lowerText.includes('poplava')) {
+      return {
+        category: 'Voda/Vodovod',
+        priority: 'urgent',
+        confidence: 0.8,
+        reasoning: 'Detektovan problem sa vodom na osnovu ključnih riječi',
+        room: lowerText.includes('kuhinja') ? 'Kuhinja' : lowerText.includes('kupaonica') || lowerText.includes('kupatilo') || lowerText.includes('wc') ? 'Kupatilo' : 'Ostalo'
+      }
     }
-  }, [watchedDescription, analyzeIssueWithAI])
+    
+    if (lowerText.includes('struja') || lowerText.includes('elektrika') || lowerText.includes('prekidač')) {
+      return {
+        category: 'Struja/Elektrika',
+        priority: 'high',
+        confidence: 0.8,
+        reasoning: 'Detektovan električni problem na osnovu ključnih riječi',
+        room: 'Ostalo'
+      }
+    }
+    
+    if (lowerText.includes('grijanje') || lowerText.includes('radijator') || lowerText.includes('klima')) {
+      return {
+        category: 'Klima/Grijanje',
+        priority: 'high',
+        confidence: 0.7,
+        reasoning: 'Detektovan problem sa grijanjem/klimom na osnovu ključnih riječi',
+        room: 'Ostalo'
+      }
+    }
+    
+    return {
+      category: 'Ostalo',
+      priority: 'medium',
+      confidence: 0.3,
+      reasoning: 'Nije moguće precizno klasifikovati problem',
+      room: 'Ostalo'
+    }
+  }
+
+  // Optimizovan debounced AI analysis za promjene teksta
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    // Trigger analysis if we have meaningful text OR images
+    const hasText = (watchedTitle && watchedTitle.length > 3) || (watchedDescription && watchedDescription.length > 10)
+    const hasImages = selectedImages && selectedImages.length > 0
+    
+    if (hasText || hasImages) {
+      debounceTimerRef.current = setTimeout(() => {
+        console.log('🔄 Triggering AI analysis - Text changed')
+        // Ne forsiramo analizu slike jer se tekst mijenja
+        analyzeIssueWithAI(watchedTitle || '', watchedDescription || '', false)
+      }, 1500) // Povećano na 1.5 sekunde za bolje debouncing
+    }
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [watchedTitle, watchedDescription]) // Uklanjamo analyzeIssueWithAI iz dependency array-a
 
   // Handle room selection change
   useEffect(() => {
@@ -152,13 +425,38 @@ export default function ReportIssue() {
     }
   }, [selectedRoom])
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('🖼️ handleImageSelect POZVANA')
     const files = Array.from(event.target.files || [])
+    console.log('🖼️ Broj novih fajlova:', files.length)
+    console.log('🖼️ Trenutni selectedImages.length:', selectedImages.length)
+    
     if (files.length + selectedImages.length > 5) {
       toast.error('Možete dodati maksimalno 5 slika')
       return
     }
-    setSelectedImages(prev => [...prev, ...files])
+    
+    const newImages = [...selectedImages, ...files]
+    console.log('🖼️ Novi array slika - length:', newImages.length)
+    console.log('🖼️ Pozivam setSelectedImages sa:', newImages.map(f => f.name))
+    
+    setSelectedImages(newImages)
+    console.log('🖼️ setSelectedImages pozvana - čekam state update')
+    
+    // Process and analyze images immediately when they change
+    if (files.length > 0) {
+      // Clear any existing debounce timer since we want immediate analysis for new images
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+      
+      // Forsiramo analizu slike jer su dodane nove slike
+      console.log('📷 Nove slike dodane - forsiram analizu')
+      console.log('📷 Proslijeđujem slike direktno u analyzeIssueWithAI:', newImages.map(f => f.name))
+      
+      // Proslijeđujemo slike direktno u funkciju umjesto čekanja state update-a
+      analyzeIssueWithAI(watchedTitle || '', watchedDescription || '', true, newImages)
+    }
   }
 
   const removeImage = (index: number) => {
@@ -318,7 +616,25 @@ export default function ReportIssue() {
     }
   }
 
+  const getPriorityLabel = (priority: string) => {
+    switch (priority) {
+      case 'low': return 'Nizak'
+      case 'medium': return 'Srednji'
+      case 'high': return 'Visok'
+      case 'urgent': return 'Hitno'
+      default: return priority
+    }
+  }
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'low': return 'text-green-600'
+      case 'medium': return 'text-yellow-600'
+      case 'high': return 'text-orange-600'
+      case 'urgent': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
+  }
 
   return (
     <Layout>
@@ -332,7 +648,7 @@ export default function ReportIssue() {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Address selection */}
+            {/* 1. Address selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Adresa
@@ -391,141 +707,10 @@ export default function ReportIssue() {
               )}
             </div>
 
-            {/* Room selection */}
-            {selectedAddress && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Prostorija
-                </label>
-                <select
-                  {...register('room')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Odaberite prostoriju</option>
-                  {availableRooms.map((room) => (
-                    <option key={room} value={room}>
-                      {room}
-                    </option>
-                  ))}
-                </select>
-                {errors.room && (
-                  <p className="mt-1 text-sm text-red-600">{errors.room.message}</p>
-                )}
-                
-                {/* Custom room input */}
-                {showCustomRoom && (
-                  <div className="mt-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Unesite naziv prostorije
-                    </label>
-                    <input
-                      type="text"
-                      value={customRoom}
-                      onChange={(e) => setCustomRoom(e.target.value)}
-                      placeholder="npr. Radionica, Podrum, Tavanski prostor..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    {selectedRoom === 'Drugo' && !customRoom && (
-                      <p className="mt-1 text-sm text-red-600">Molimo unesite naziv prostorije</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Title */}
+            {/* 2. Image upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Naslov problema
-              </label>
-              <input
-                {...register('title')}
-                type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Kratko opišite problem..."
-              />
-              {errors.title && (
-                <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
-              )}
-            </div>
-
-            {/* Category */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Kategorija
-              </label>
-              <select
-                {...register('category')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">Odaberite kategoriju</option>
-                {availableCategories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-              {errors.category && (
-                <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
-              )}
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Detaljni opis
-              </label>
-              <textarea
-                {...register('description')}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Opišite problem što detaljnije..."
-              />
-              {errors.description && (
-                <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
-              )}
-              
-              {/* AI Analysis */}
-              {isAnalyzing && (
-                <div className="mt-2 flex items-center text-sm text-blue-600">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  AI analizira problem...
-                </div>
-              )}
-              
-              {aiSuggestion && !isAnalyzing && (
-                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <div className="flex items-start">
-                    <Sparkles className="h-4 w-4 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">AI preporuka:</p>
-                      <p className="text-sm text-blue-700">{aiSuggestion}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Priority */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Prioritet
-              </label>
-              <select
-                {...register('priority')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="low">Nizak</option>
-                <option value="medium">Srednji</option>
-                <option value="high">Visok</option>
-                <option value="urgent">Hitno</option>
-              </select>
-            </div>
-
-            {/* Image upload */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Fotografije (opcionalno)
+                Fotografije problema (opcionalno)
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
                 <div className="text-center">
@@ -540,12 +725,12 @@ export default function ReportIssue() {
                       </span>
                     </label>
                     <input
-                      id="images"
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      className="hidden"
+                         id="images"
+                         type="file"
+                         multiple
+                         accept="image/*"
+                         onChange={handleImageSelect}
+                         className="hidden"
                     />
                   </div>
                 </div>
@@ -585,11 +770,223 @@ export default function ReportIssue() {
                           </div>
                         </div>
                       )}
+                      
+                      {/* AI Analysis loading indicator */}
+                      {isAnalyzing && (
+                        <div className="absolute inset-0 bg-blue-500 bg-opacity-75 rounded-lg flex items-center justify-center">
+                          <div className="text-center text-white">
+                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-1" />
+                            <div className="text-xs font-medium">Analiziram...</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+              )}            </div>
+
+            {/* 3. Title */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Naslov problema
+              </label>
+              <input
+                {...register('title')}
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Kratko opišite problem..."
+              />
+              {errors.title && (
+                <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
               )}
             </div>
+
+            {/* 4. Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Detaljni opis
+              </label>
+              <textarea
+                {...register('description')}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Opišite problem što detaljnije..."
+              />
+              {errors.description && (
+                <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>
+              )}
+            </div>
+
+            {/* 5. AI Analysis Section */}
+            {(isAnalyzing || aiAnalysis) && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <Sparkles className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-blue-900 mb-2">Majstorova procjena</h3>
+                    
+                    {isAnalyzing ? (
+                      <div className="flex items-center text-sm text-blue-700">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        {selectedImages.length > 0 && (!watchedTitle && !watchedDescription) ? 
+                          'Analiziram sliku...' : 
+                          selectedImages.length > 0 ? 
+                            'Analiziram sliku i tekst...' : 
+                            'Analiziram problem...'
+                        }
+                      </div>
+                    ) : aiAnalysis ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-blue-700">Kategorija:</span>
+                          <span className="text-sm font-medium text-blue-900">{aiAnalysis.category}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-blue-700">Prioritet:</span>
+                          <span className={`text-sm font-medium ${getPriorityColor(aiAnalysis.priority)}`}>
+                            {getPriorityLabel(aiAnalysis.priority)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-blue-700">Sigurnost:</span>
+                          <span className="text-sm font-medium text-blue-900">
+                            {Math.round(aiAnalysis.confidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="mt-3 p-2 bg-white bg-opacity-50 rounded text-xs text-blue-800">
+                          <strong>Objašnjenje:</strong> {aiAnalysis.reasoning}
+                        </div>
+                        
+                        {/* Cost and Time Estimates */}
+                        {(aiAnalysis.estimatedCost || aiAnalysis.estimatedTime || aiAnalysis.solution) && (
+                          <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                            {aiAnalysis.solution && (
+                              <div className="mb-2">
+                                <strong className="text-green-800">Rješenje:</strong> 
+                                <span className="text-green-700 ml-1">{aiAnalysis.solution}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between">
+                              {aiAnalysis.estimatedCost && (
+                                <div>
+                                  <strong className="text-green-800">Trošak:</strong> 
+                                  <span className="text-green-700 ml-1">{aiAnalysis.estimatedCost}</span>
+                                </div>
+                              )}
+                              {aiAnalysis.estimatedTime && (
+                                <div>
+                                  <strong className="text-green-800">Vrijeme:</strong> 
+                                  <span className="text-green-700 ml-1">{aiAnalysis.estimatedTime}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="mt-2 flex items-center text-xs text-blue-600">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Polja su automatski popunjena. Možete ih promijeniti ako je potrebno.
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. Category */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Kategorija
+                {aiAnalysis && (
+                  <span className="ml-2 text-xs text-blue-600 font-normal">
+                    (AI prijedlog: {aiAnalysis.category})
+                  </span>
+                )}
+              </label>
+              <select
+                {...register('category')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Odaberite kategoriju</option>
+                {availableCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              {errors.category && (
+                <p className="mt-1 text-sm text-red-600">{errors.category.message}</p>
+              )}
+            </div>
+
+            {/* 7. Priority */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Prioritet
+                {aiAnalysis && (
+                  <span className={`ml-2 text-xs font-normal ${getPriorityColor(aiAnalysis.priority)}`}>
+                    (AI prijedlog: {getPriorityLabel(aiAnalysis.priority)})
+                  </span>
+                )}
+              </label>
+              <select
+                {...register('priority')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="low">Nizak</option>
+                <option value="medium">Srednji</option>
+                <option value="high">Visok</option>
+                <option value="urgent">Hitno</option>
+              </select>
+            </div>
+
+            {/* 8. Room selection */}
+            {selectedAddress && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Prostorija
+                  {aiAnalysis && aiAnalysis.room && (
+                    <span className="ml-2 text-xs text-blue-600 font-normal">
+                      (AI prijedlog: {aiAnalysis.room})
+                    </span>
+                  )}
+                </label>
+                <select
+                  {...register('room')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">Odaberite prostoriju</option>
+                  {availableRooms.map((room) => (
+                    <option key={room} value={room}>
+                      {room}
+                    </option>
+                  ))}
+                </select>
+                {errors.room && (
+                  <p className="mt-1 text-sm text-red-600">{errors.room.message}</p>
+                )}
+                
+                {/* Custom room input */}
+                {showCustomRoom && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Unesite naziv prostorije
+                    </label>
+                    <input
+                      type="text"
+                      value={customRoom}
+                      onChange={(e) => setCustomRoom(e.target.value)}
+                      placeholder="npr. Radionica, Podrum, Tavanski prostor..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    {selectedRoom === 'Drugo' && !customRoom && (
+                      <p className="mt-1 text-sm text-red-600">Molimo unesite naziv prostorije</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Submit button */}
             <div className="flex justify-end space-x-4">

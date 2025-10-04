@@ -61,7 +61,7 @@ export interface Issue {
   description: string
   category?: string
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  status: 'open' | 'assigned' | 'in_progress' | 'closed'
+  status: 'open' | 'assigned_to_master' | 'in_progress' | 'closed'
   assigned_to?: string
   location_details?: Record<string, unknown>
   created_at: string
