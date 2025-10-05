@@ -28,7 +28,7 @@ export default function BuildingForm() {
   const [initialLoading, setInitialLoading] = useState(!!id)
   const [building, setBuilding] = useState<Building | null>(null)
 
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.app_metadata?.role === 'admin' || 
+  const isAdmin = user?.app_metadata?.role === 'admin' ||
                   user?.user_metadata?.role === 'company' || user?.app_metadata?.role === 'company'
   const isEdit = !!id
 

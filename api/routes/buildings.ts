@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/express';
 import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
@@ -20,7 +21,7 @@ const serviceSupabase = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 // Middleware to check if user is admin
-const requireAdmin = async (req: Request, res: Response, next: any) => {
+const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: any) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
@@ -40,7 +41,12 @@ const requireAdmin = async (req: Request, res: Response, next: any) => {
       return res.status(403).json({ error: 'Admin or company access required' });
     }
 
-    req.user = user;
+    req.user = {
+      id: user.id,
+      email: user.email,
+      user_metadata: user.user_metadata,
+      app_metadata: user.app_metadata
+    };
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -158,7 +164,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /api/buildings - Create new building (Admin only)
-router.post('/', requireAdmin, async (req: Request, res: Response) => {
+router.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { name, address, floors_count = 1, description, garage_levels = 0 } = req.body;
 

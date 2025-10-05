@@ -33,6 +33,9 @@ export interface User {
     entrance?: string
     notes?: string
   }
+  app_metadata?: {
+    role?: 'tenant' | 'company' | 'admin'
+  }
 }
 
 export interface Building {

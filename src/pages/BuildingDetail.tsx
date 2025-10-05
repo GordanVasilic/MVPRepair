@@ -30,7 +30,7 @@ export default function BuildingDetail() {
   const [issues, setIssues] = useState<Issue2D[]>([])
   const [selectedFloor, setSelectedFloor] = useState<number | null>(null)
 
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.app_metadata?.role === 'admin' || 
+  const isAdmin = user?.app_metadata?.role === 'admin' ||
                   user?.user_metadata?.role === 'company' || user?.app_metadata?.role === 'company'
 
   useEffect(() => {
@@ -112,22 +112,21 @@ export default function BuildingDetail() {
         return
       }
 
-      // Transform issues to Issue3D format
-      const transformedIssues: Issue3D[] = (data || []).map(issue => ({
+      // Transform issues to Issue2D format
+      const transformedIssues: Issue2D[] = (data || []).map(issue => ({
         id: issue.id,
         title: issue.title,
         description: issue.description,
-        status: issue.status,
-        priority: issue.priority,
-        type: issue.category, // Use category instead of issue_type
-        floorNumber: issue.apartment?.floor || 0, // Use apartment floor
-        roomNumber: issue.apartment?.apartment_number || null, // Use apartment number
+        status: issue.status as 'new' | 'in_progress' | 'resolved',
+        priority: issue.priority as 'low' | 'medium' | 'high' | 'critical',
+        type: (issue.category || 'other') as 'plumbing' | 'electrical' | 'structural' | 'heating' | 'other',
+        floor_number: Array.isArray(issue.apartment) ? issue.apartment[0]?.floor || 0 : (issue.apartment as any)?.floor || 0,
+        apartment_number: Array.isArray(issue.apartment) ? issue.apartment[0]?.apartment_number || null : (issue.apartment as any)?.apartment_number || null,
+        created_at: issue.created_at,
         position: {
           x: Math.random() * 80 + 10, // Random position for now
-          y: Math.random() * 60 + 10,
-          z: 0
-        },
-        createdAt: issue.created_at
+          y: Math.random() * 60 + 10
+        }
       }))
 
       setIssues(transformedIssues)

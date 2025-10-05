@@ -22,7 +22,7 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const { user, signOut } = useAuthStore()
 
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.app_metadata?.role === 'admin' || 
+  const isAdmin = user?.app_metadata?.role === 'admin' || 
                   user?.user_metadata?.role === 'company' || user?.app_metadata?.role === 'company'
 
   const handleSignOut = async () => {

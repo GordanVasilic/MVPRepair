@@ -23,7 +23,7 @@ export default function Buildings() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
 
-  const isAdmin = user?.user_metadata?.role === 'admin' || user?.app_metadata?.role === 'admin' || 
+  const isAdmin = user?.app_metadata?.role === 'admin' ||
                   user?.user_metadata?.role === 'company' || user?.app_metadata?.role === 'company'
 
   const fetchBuildings = useCallback(async () => {
