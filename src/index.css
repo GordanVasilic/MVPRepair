@@ -12,3 +12,133 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* 3D Building Visualization Styles */
+.building-3d-container {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.building-container {
+  transform-style: preserve-3d;
+}
+
+.floor {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.floor:hover {
+  transform: scale(1.02) !important;
+  transition: all 0.3s ease;
+}
+
+.floor.selected {
+  transform: scale(1.05) !important;
+  filter: brightness(1.1);
+}
+
+.floor-front {
+  transform-style: preserve-3d;
+  will-change: transform, box-shadow;
+}
+
+.floor-side {
+  transform-style: preserve-3d;
+}
+
+.floor-roof {
+  transform-style: preserve-3d;
+}
+
+.window {
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+  background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
+}
+
+.window-side {
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+  background: linear-gradient(135deg, #1E40AF 0%, #1E3A8A 100%);
+}
+
+.door {
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+  background: linear-gradient(135deg, #8B4513 0%, #654321 100%);
+}
+
+.issue-marker {
+  will-change: transform, opacity;
+}
+
+@keyframes pulse {
+  0%, 100% { 
+    opacity: 1; 
+    transform: scale(1); 
+  }
+  50% { 
+    opacity: 0.7; 
+    transform: scale(1.2); 
+  }
+}
+
+.floor-tooltip {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive Design for 3D Building */
+@media (max-width: 1024px) {
+  .building-container {
+    transform: rotateX(15deg) rotateY(-25deg) scale(0.8);
+  }
+  
+  .building-3d-wrapper {
+    padding: 20px;
+    min-height: auto !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .building-container {
+    transform: rotateX(10deg) rotateY(-20deg) scale(0.6);
+  }
+  
+  .building-3d-wrapper {
+    padding: 15px;
+    flex-direction: column;
+  }
+  
+  .building-stats {
+    position: relative !important;
+    bottom: auto !important;
+    right: auto !important;
+    margin-top: 10px;
+    align-self: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .building-container {
+    transform: rotateX(5deg) rotateY(-15deg) scale(0.5);
+  }
+  
+  .floor-tooltip {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+}
+
+/* Hardware acceleration for better performance */
+.building-container,
+.floor,
+.floor-front,
+.floor-side,
+.floor-roof {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}

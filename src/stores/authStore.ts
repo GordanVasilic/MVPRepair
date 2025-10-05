@@ -87,10 +87,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   initialize: async () => {
+    console.log('🔄 AuthStore: Inicijalizacija počinje...')
+    
+    // Dodaj timeout od 10 sekundi za inicijalizaciju
+    const initTimeout = setTimeout(() => {
+      console.warn('⏰ AuthStore: Timeout - forsiranje završetka inicijalizacije')
+      set({ loading: false })
+    }, 10000)
+    
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      console.log('🔍 AuthStore: Dobijanje sesije...')
+      
+      // Dodaj timeout za getSession poziv
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session timeout')), 8000)
+      )
+      
+      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
+      console.log('📋 AuthStore: Sesija dobljena:', session ? 'postoji' : 'ne postoji')
       
       if (session?.user) {
+        console.log('👤 AuthStore: Korisnik pronađen:', session.user.email)
         set({ 
           user: {
             id: session.user.id,
@@ -102,39 +120,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
         })
         
-        // Migriraj postojeće podatke nakon inicijalizacije
-        setTimeout(() => {
-          get().migrateExistingData()
-        }, 100)
+        // Migriraj postojeće podatke nakon inicijalizacije (bez čekanja)
+        console.log('🔄 AuthStore: Pokretanje migracije podataka...')
+        get().migrateExistingData().catch(err => 
+          console.warn('⚠️ AuthStore: Migracija neuspešna:', err)
+        )
+      } else {
+        console.log('❌ AuthStore: Nema aktivne sesije')
       }
     } catch (error) {
-      console.error('Error initializing auth:', error)
+      console.error('❌ AuthStore: Greška pri inicijalizaciji:', error)
+      // Ne blokiraj aplikaciju zbog greške u autentifikaciji
     } finally {
+      clearTimeout(initTimeout)
+      console.log('✅ AuthStore: Inicijalizacija završena, loading = false')
       set({ loading: false })
     }
 
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        set({ 
-          user: {
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.user_metadata?.name,
-            phone: session.user.user_metadata?.phone,
-            role: session.user.user_metadata?.role || 'tenant',
-            user_metadata: session.user.user_metadata
-          }
-        })
-        
-        // Migriraj postojeće podatke nakon prijave
-        setTimeout(() => {
-          get().migrateExistingData()
-        }, 100)
-      } else if (event === 'SIGNED_OUT') {
-        set({ user: null, addresses: [] })
-      }
-    })
+    // Listen for auth changes (bez await)
+    console.log('👂 AuthStore: Postavljanje listener-a za auth promene...')
+    try {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔔 AuthStore: Auth state promena:', event, session ? 'sa sesijom' : 'bez sesije')
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('✅ AuthStore: Korisnik se prijavio:', session.user.email)
+          set({ 
+            user: {
+              id: session.user.id,
+              email: session.user.email,
+              name: session.user.user_metadata?.name,
+              phone: session.user.user_metadata?.phone,
+              role: session.user.user_metadata?.role || 'tenant',
+              user_metadata: session.user.user_metadata
+            }
+          })
+          
+          // Migriraj postojeće podatke nakon prijave (bez čekanja)
+          get().migrateExistingData().catch(err => 
+            console.warn('⚠️ AuthStore: Migracija neuspešna:', err)
+          )
+        } else if (event === 'SIGNED_OUT') {
+          console.log('👋 AuthStore: Korisnik se odjavio')
+          set({ user: null, addresses: [] })
+        }
+      })
+    } catch (error) {
+      console.error('❌ AuthStore: Greška pri postavljanju listener-a:', error)
+    }
   },
 
   updateUser: (userData: Partial<User>) => {

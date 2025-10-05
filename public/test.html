@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            margin: 1rem 0;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Stranica</h1>
+        <div id="status" class="status">Učitavanje...</div>
+        <div id="details"></div>
+        <button onclick="testFunction()">Test Dugme</button>
+    </div>
+
+    <script>
+        console.log('🧪 Test stranica se učitava...');
+        
+        function updateStatus(message, isError = false) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + (isError ? 'error' : 'success');
+            console.log(isError ? '❌' : '✅', message);
+        }
+        
+        function testFunction() {
+            updateStatus('Dugme je kliknuto! JavaScript radi.');
+            document.getElementById('details').innerHTML = `
+                <p>Vreme: ${new Date().toLocaleString()}</p>
+                <p>User Agent: ${navigator.userAgent}</p>
+                <p>URL: ${window.location.href}</p>
+            `;
+        }
+        
+        // Test da li se stranica učitava
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 DOM je učitan');
+            updateStatus('Stranica je uspešno učitana!');
+            
+            // Test fetch API
+            setTimeout(() => {
+                fetch('/api/test')
+                    .then(response => {
+                        console.log('📡 API test response:', response.status);
+                        document.getElementById('details').innerHTML += `<p>API test: ${response.status}</p>`;
+                    })
+                    .catch(error => {
+                        console.log('📡 API test error:', error.message);
+                        document.getElementById('details').innerHTML += `<p>API test error: ${error.message}</p>`;
+                    });
+            }, 1000);
+        });
+        
+        console.log('🧪 Test script je završen');
+    </script>
+</body>
+</html>

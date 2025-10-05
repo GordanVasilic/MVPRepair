@@ -15,6 +15,14 @@ export default defineConfig({
     tsconfigPaths(),
   ],
   server: {
+    host: '0.0.0.0', // Allow external connections
+    port: 5173,
+    cors: true, // Enable CORS
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      'Cross-Origin-Opener-Policy': 'unsafe-none',
+      'X-Frame-Options': 'ALLOWALL'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

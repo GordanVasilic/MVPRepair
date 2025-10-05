@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+console.log('🔧 Supabase: URL:', supabaseUrl ? 'postoji' : 'ne postoji')
+console.log('🔧 Supabase: Anon Key:', supabaseAnonKey ? 'postoji' : 'ne postoji')
+
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Supabase: Nedostaju environment varijable!')
   throw new Error('Missing Supabase environment variables')
 }
 
+console.log('✅ Supabase: Kreiranje klijenta...')
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Database types
