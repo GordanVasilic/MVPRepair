@@ -21,6 +21,7 @@ interface Tenant {
     apartment_number: string
     floor: number
   }
+  apartment_number?: string
   status: 'active' | 'inactive' | 'pending'
   invited_at: string
   joined_at?: string

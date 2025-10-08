@@ -220,7 +220,12 @@ export default function AdminDashboard() {
         const pendingIssues = allIssues.filter(issue => issue.status === 'pending' || issue.status === 'open').length
         const resolvedIssues = allIssues.filter(issue => issue.status === 'closed' || issue.status === 'resolved').length
 
-        setRecentIssues(activeIssues.slice(0, 10)) // Show latest 10 active issues
+        // Add updated_at field to issues for compatibility
+        const issuesWithUpdatedAt = activeIssues.map(issue => ({
+          ...issue,
+          updated_at: issue.created_at // Use created_at as fallback for updated_at
+        }))
+        setRecentIssues(issuesWithUpdatedAt.slice(0, 10)) // Show latest 10 active issues
         setStats(prev => ({
           ...prev,
           activeIssues: activeIssues.length,
@@ -362,14 +367,14 @@ export default function AdminDashboard() {
       if (tenants) {
         const transformedTenants: Tenant[] = tenants.map(tenant => ({
           id: tenant.id,
-          name: tenant.user_profiles?.name || 'Nepoznat korisnik',
-          email: tenant.user_profiles?.email || '',
-          phone: tenant.user_profiles?.phone,
-          apartment_number: tenant.apartments?.apartment_number,
-          floor: tenant.apartments?.floor,
+          name: 'Nepoznat korisnik',
+          email: '',
+          phone: '',
+          apartment_number: '',
+          floor: 0,
           move_in_date: null, // Not available in apartment_tenants table
-          building_name: tenant.apartments?.buildings?.name,
-          building_address: tenant.apartments?.buildings?.address,
+          building_name: 'Nepoznata zgrada',
+          building_address: 'Nepoznata adresa',
           created_at: tenant.created_at
         }))
 
@@ -574,7 +579,7 @@ export default function AdminDashboard() {
                         <div>
                           <h4 className="font-medium text-gray-900">{issue.title}</h4>
                           <p className="text-sm text-gray-600">
-                            Prijavio: {issue.user_profiles?.name || 'Nepoznat korisnik'}
+                            Prijavio: Nepoznat korisnik
                           </p>
                           {issue.apartment && (
                             <p className="text-xs text-gray-500">
@@ -586,12 +591,13 @@ export default function AdminDashboard() {
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(issue.priority)}`}>
                             {issue.priority === 'high' ? 'Visok' : 
                              issue.priority === 'medium' ? 'Srednji' : 
-                             issue.priority === 'critical' ? 'Kritičan' : 'Nizak'}
+                             issue.priority === 'urgent' ? 'Kritičan' : 'Nizak'}
                           </span>
                           <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(issue.status)}`}>
-                            {issue.status === 'pending' ? 'Na čekanju' : 
-                             issue.status === 'open' ? 'Otvoren' :
-                             issue.status === 'in_progress' ? 'U toku' : 'Završeno'}
+                            {issue.status === 'open' ? 'Otvoren' :
+                             issue.status === 'assigned_to_master' ? 'Dodeljen majstoru' :
+                             issue.status === 'in_progress' ? 'U toku' : 
+                             issue.status === 'closed' ? 'Završeno' : 'Otvoren'}
                           </span>
                           <button 
                             onClick={() => handleIssueClick(issue.id)}

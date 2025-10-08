@@ -60,6 +60,7 @@ interface TenantInfo {
   floor_number: number
   building_name: string
   building_address: string
+  apartment_id?: string
 }
 
 export default function ReportIssue() {
@@ -131,14 +132,15 @@ export default function ReportIssue() {
         return
       }
 
-      if (tenantData && tenantData.building) {
+      if (tenantData) {
         const tenant: TenantInfo = {
           id: tenantData.id,
           building_id: tenantData.building_id,
           apartment_number: tenantData.apartment_number,
-          floor_number: tenantData.floor_number,
-          building_name: tenantData.building.name,
-          building_address: tenantData.building.address
+          floor_number: tenantData.floor || 0,
+          building_name: tenantData.building_name || 'Nepoznata zgrada',
+          building_address: tenantData.building_address || 'Nepoznata adresa',
+          apartment_id: tenantData.apartment_id
         }
         
         setTenantInfo(tenant)

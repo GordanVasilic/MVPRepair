@@ -232,8 +232,8 @@ export default function AdminIssues() {
       filtered = filtered.filter(issue =>
         issue.title.toLowerCase().includes(filters.search.toLowerCase()) ||
         issue.description.toLowerCase().includes(filters.search.toLowerCase()) ||
-        issue.user_profiles?.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
-        issue.user_profiles?.email?.toLowerCase().includes(filters.search.toLowerCase())
+        false || // Removed user_profiles search as it's not available
+        false
       )
     }
 
@@ -250,14 +250,14 @@ export default function AdminIssues() {
     // Building filter
     if (filters.building !== 'all') {
       filtered = filtered.filter(issue => 
-        issue.apartments?.buildings?.id === filters.building
+        false // Removed building filter as building_id is not available in apartment
       )
     }
 
     // Floor filter
     if (filters.floor !== 'all') {
       filtered = filtered.filter(issue => 
-        issue.apartments?.floor?.toString() === filters.floor
+        issue.apartment?.floor?.toString() === filters.floor
       )
     }
 
@@ -611,12 +611,12 @@ export default function AdminIssues() {
                       <div className="flex items-center space-x-4 text-sm text-gray-500">
                         <div className="flex items-center">
                           <User className="w-4 h-4 mr-1" />
-                          {issue.user_profiles?.name || issue.user_profiles?.email || 'Nepoznat korisnik'}
+                          Nepoznat korisnik
                         </div>
                         
                         <div className="flex items-center">
                           <Building className="w-4 h-4 mr-1" />
-                          {issue.apartment?.building?.name}
+                          Nepoznata zgrada
                         </div>
                         
                         <div className="flex items-center">

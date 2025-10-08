@@ -210,7 +210,7 @@ router.post('/invite', async (req: Request, res: Response) => {
 
     // Check if user already exists
     const { data: existingUsers } = await serviceSupabase.auth.admin.listUsers();
-    const existingUser = existingUsers.users.find(user => user.email === email);
+    const existingUser = existingUsers?.users?.find((user: any) => user.email === email);
     
     if (existingUser) {
       // Check if user is already a tenant in this apartment
@@ -262,7 +262,7 @@ router.post('/invite', async (req: Request, res: Response) => {
 
     // TODO: Send email invitation here
     // For now, we'll just return the invitation data
-    console.log(`Invitation created for ${email} to apartment ${apartment.apartment_number} in building ${apartment.buildings.name}`);
+    console.log(`Invitation created for ${email} to apartment ${apartment.apartment_number} in building ${apartment.buildings?.[0]?.name || 'Unknown'}`);
     console.log(`Registration link: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/register/${invite_token}`);
 
     res.json({
@@ -278,8 +278,8 @@ router.post('/invite', async (req: Request, res: Response) => {
           floor: apartment.floor
         },
         building: {
-          name: apartment.buildings.name,
-          address: apartment.buildings.address
+          name: apartment.buildings?.[0]?.name || 'Unknown',
+          address: apartment.buildings?.[0]?.address || 'Unknown'
         },
         apartment_number: invitation.apartment_number,
         floor_number: invitation.floor_number
@@ -318,7 +318,7 @@ router.post('/register/:token', async (req: Request, res: Response) => {
 
     // Check if user already exists
     const { data: existingUsers } = await serviceSupabase.auth.admin.listUsers();
-    const existingUser = existingUsers.users.find(user => user.email === invitation.email);
+    const existingUser = existingUsers?.users?.find((user: any) => user.email === invitation.email);
     
     if (existingUser) {
       return res.status(400).json({ error: 'User with this email already exists' });

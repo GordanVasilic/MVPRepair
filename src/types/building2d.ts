@@ -21,6 +21,7 @@ export interface Issue2D {
   status: 'new' | 'in_progress' | 'resolved';
   priority: 'low' | 'medium' | 'high' | 'critical';
   type: 'plumbing' | 'electrical' | 'structural' | 'heating' | 'other';
+  category?: string;
   floor_number: number;
   apartment_number?: string;
   created_at: string;

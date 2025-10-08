@@ -325,7 +325,7 @@ const Building2D: React.FC<Building2DProps> = ({
                       </div>
                       <div
                         className={`w-3 h-3 rounded-full ${
-                          issue.priority === 'urgent' ? 'bg-red-500' :
+                          issue.priority === 'critical' ? 'bg-red-500' :
                           issue.priority === 'high' ? 'bg-orange-500' :
                           issue.priority === 'medium' ? 'bg-yellow-500' :
                           'bg-green-500'

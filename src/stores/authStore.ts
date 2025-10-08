@@ -529,7 +529,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Kreiraj mapu vlasnika za brže pretraživanje
       const ownersMap = new Map()
       if (owners?.users) {
-        owners.users.forEach(owner => {
+        owners.users.forEach((owner: any) => {
           if (ownerIds.includes(owner.id)) {
             ownersMap.set(owner.id, owner.user_metadata?.name || owner.email)
           }
