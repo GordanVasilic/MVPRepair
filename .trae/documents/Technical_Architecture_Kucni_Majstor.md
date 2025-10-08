@@ -57,7 +57,10 @@ graph TD
 | /3d-view | Interaktivni 3D prikaz zgrade |
 | /admin/dashboard | Admin dashboard sa svim prijavama |
 | /admin/reports | Izvještaji i analitika |
-| /admin/users | Upravljanje korisnicima |
+| /admin/users | Upravljanje korisnicima (deprecated) |
+| /tenants | Upravljanje stanarima po zgradama |
+| /tenants/invite | Pozivanje novih stanara |
+| /register/:token | Registracija preko pozivnice |
 | /profile | Korisnički profil i postavke |
 
 ## 4. API Definitions
@@ -134,6 +137,50 @@ Request:
 | assignedTo | string | false | ID tehničara |
 | notes | string | false | Napomene |
 
+**Upravljanje stanarima**
+```
+GET /api/tenants
+```
+
+Response:
+| Param Name | Param Type | Description |
+|------------|------------|-------------|
+| tenants | Tenant[] | Lista stanara za zgrade firme |
+
+```
+POST /api/tenants/invite
+```
+
+Request:
+| Param Name | Param Type | isRequired | Description |
+|------------|------------|------------|-------------|
+| email | string | true | Email adresa stanara |
+| buildingId | string | true | ID zgrade |
+| apartmentNumber | string | true | Broj stana |
+| floorNumber | number | true | Broj sprata |
+
+Response:
+| Param Name | Param Type | Description |
+|------------|------------|-------------|
+| success | boolean | Status pozivnice |
+| inviteToken | string | Token za registraciju |
+
+```
+POST /api/tenants/register/:token
+```
+
+Request:
+| Param Name | Param Type | isRequired | Description |
+|------------|------------|------------|-------------|
+| name | string | true | Ime stanara |
+| password | string | true | Password |
+
+Response:
+| Param Name | Param Type | Description |
+|------------|------------|-------------|
+| success | boolean | Status registracije |
+| user | User | Podaci o korisniku |
+
 ## 5. Server Architecture Diagram
 
 ```mermaid
@@ -177,6 +224,9 @@ erDiagram
     APARTMENTS ||--o{ ISSUES : located_in
     USERS ||--o{ USER_BUILDINGS : belongs_to
     BUILDINGS ||--o{ USER_BUILDINGS : has
+    USERS ||--o{ BUILDING_TENANTS : invited_by
+    BUILDINGS ||--o{ BUILDING_TENANTS : contains
+    USERS ||--o{ BUILDING_TENANTS : tenant
 
     USERS {
         uuid id PK
@@ -255,6 +305,19 @@ erDiagram
         uuid building_id FK
         uuid apartment_id FK
         string role
+        timestamp created_at
+    }
+    
+    BUILDING_TENANTS {
+        uuid id PK
+        uuid building_id FK
+        uuid user_id FK
+        string apartment_number
+        int floor_number
+        string status
+        uuid invited_by FK
+        timestamp invited_at
+        timestamp joined_at
         timestamp created_at
     }
 ```
@@ -348,6 +411,35 @@ CREATE TABLE user_buildings (
     building_id UUID REFERENCES buildings(id) ON DELETE CASCADE,
     apartment_id UUID REFERENCES apartments(id) ON DELETE CASCADE,
     role VARCHAR(20) DEFAULT 'resident',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create building_tenants table for tenant management
+CREATE TABLE building_tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    building_id UUID REFERENCES buildings(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    apartment_number VARCHAR(10),
+    floor_number INTEGER,
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'pending')),
+    invited_by UUID REFERENCES auth.users(id),
+    invited_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    joined_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(building_id, user_id)
+);
+
+-- Create tenant_invitations table for managing invitations
+CREATE TABLE tenant_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL,
+    building_id UUID REFERENCES buildings(id) ON DELETE CASCADE,
+    apartment_number VARCHAR(10),
+    floor_number INTEGER,
+    invite_token VARCHAR(255) UNIQUE NOT NULL,
+    invited_by UUID REFERENCES auth.users(id),
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '7 days'),
+    used_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -65,6 +65,7 @@ export interface CreateBuildingRequest {
   description?: string
   floors_count?: number
   garage_levels?: number
+  apartments_per_floor?: number
 }
 
 export interface UpdateBuildingRequest {
@@ -73,4 +74,5 @@ export interface UpdateBuildingRequest {
   description?: string
   floors_count?: number
   garage_levels?: number
+  apartments_per_floor?: number
 }

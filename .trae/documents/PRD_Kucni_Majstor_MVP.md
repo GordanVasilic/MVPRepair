@@ -14,8 +14,8 @@ Cilj je kreirati MVP koji će značajno poboljšati efikasnost održavanja zgrad
 
 | Role | Registration Method | Core Permissions |
 |------|---------------------|------------------|
-| Stanar | Email ili broj telefona registracija | Može prijaviti kvarove, pratiti status, koristiti AI pomoć i 3D prikaz |
-| Admin/Upravna kompanija | Admin kreiranje naloga | Može upravljati svim prijavama, dodijeliti tehničare, koristiti AI analizu i 3D Digital Twin |
+| Stanar | Email registracija ili pozivnica od firme | Može prijaviti kvarove, pratiti status, koristiti AI pomoć i 3D prikaz |
+| Admin/Upravna kompanija | Admin kreiranje naloga | Može upravljati svim prijavama, pozivati stanare, dodijeliti tehničare, koristiti AI analizu i 3D Digital Twin |
 
 ### 2.2 Feature Module
 
@@ -27,7 +27,8 @@ Naša aplikacija za upravljanje kvarovima sastoji se od sljedećih glavnih stran
 4. **Status tracking stranica**: praćenje statusa postojećih prijava
 5. **3D prikaz stranica**: interaktivni 3D model zgrade sa označenim kvarovima
 6. **Admin dashboard**: upravljanje svim prijavama, dodjela tehničara, izvještaji
-7. **Ticket detail stranica**: detaljni prikaz pojedinačne prijave sa mogućnostima upravljanja
+7. **Stanari stranica**: upravljanje stanarima, pozivanje novih stanara, povezivanje sa zgradama
+8. **Ticket detail stranica**: detaljni prikaz pojedinačne prijave sa mogućnostima upravljanja
 
 ### 2.3 Page Details
 
@@ -39,6 +40,7 @@ Naša aplikacija za upravljanje kvarovima sastoji se od sljedećih glavnih stran
 | Status tracking | Praćenje statusa | Lista svih korisnikovih prijava sa trenutnim statusom (Open, Assigned, In Progress, Closed), notifikacije |
 | 3D prikaz | Interaktivna vizualizacija | 3D model zgrade/sprata, klik na lokaciju za prijavu kvara, vizuelni prikaz postojećih kvarova |
 | Admin dashboard | Upravljanje prijavama | Lista svih prijava, filtriranje po statusu/kategoriji, brze statistike, AI insights |
+| Stanari | Upravljanje stanarima | Lista stanara po zgradama, pozivanje novih stanara email pozivnicama, dodjeljivanje stanova/spratova, upravljanje statusom |
 | Ticket detail | Upravljanje pojedinačnom prijavom | Prikaz svih detalja prijave, promjena statusa, dodjela tehničara, AI sugestije za prioritet |
 | Izvještaji | Analitika | Osnovni izvještaji o broju otvorenih/zatvorenih prijava, prosječno vrijeme rješavanja |
 

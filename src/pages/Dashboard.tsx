@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { 
   AlertTriangle, 
   CheckCircle, 
@@ -22,6 +22,7 @@ interface DashboardStats {
 
 export default function Dashboard() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
     totalIssues: 0,
     openIssues: 0,
@@ -61,6 +62,8 @@ export default function Dashboard() {
       setLoading(false)
     }
   }, [user])
+
+
 
   useEffect(() => {
     fetchDashboardData()
@@ -153,6 +156,8 @@ export default function Dashboard() {
             Ovdje možete pratiti status svojih prijava i prijaviti nove kvarove.
           </p>
         </div>
+
+
 
         {/* Stats cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

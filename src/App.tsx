@@ -12,10 +12,17 @@ import Issues from './pages/Issues'
 import IssueDetail from './pages/IssueDetail'
 import ThreeDView from './pages/ThreeDView'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminIssues from './pages/AdminIssues'
 import Profile from './pages/Profile'
 import Buildings from './pages/Buildings'
 import BuildingDetail from './pages/BuildingDetail'
 import BuildingForm from './pages/BuildingForm'
+import Tenants from './pages/Tenants'
+import Reports from './pages/Reports'
+import ReportsIssues from './pages/ReportsIssues'
+import ReportsTenants from './pages/ReportsTenants'
+import ReportsBuildings from './pages/ReportsBuildings'
+import ReportsPerformance from './pages/ReportsPerformance'
 
 // Components
 import LoadingSpinner from './components/LoadingSpinner'
@@ -25,36 +32,25 @@ function App() {
   const { user, loading, initialize } = useAuthStore()
 
   useEffect(() => {
-    console.log('🚀 App: useEffect pozvan, pokretanje initialize...')
     initialize()
-  }, []) // Uklanjamo initialize iz dependency array-a da izbegnemo beskonačnu petlju
+  }, [initialize])
 
-  console.log('🔍 App: Render - loading:', loading, 'user:', user ? 'postoji' : 'ne postoji')
-
-  // Privremeno zaobiđi loading da vidimo da li se aplikacija uopšte učitava
-  if (false && loading) {
-    console.log('⏳ App: Prikazujem LoadingSpinner...')
+  if (loading) {
     return <LoadingSpinner />
   }
 
-  // Dodaj fallback UI sa timeout-om
-  if (loading) {
+  // Error boundary for auth issues
+  if (!loading && user === undefined) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4">🏠 Kućni Majstor MVP</h1>
-          <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600 mb-4">Aplikacija se učitava...</p>
-          <div className="text-left text-sm text-gray-500 bg-gray-100 p-3 rounded">
-            <div className="mb-2">📊 <strong>Status:</strong></div>
-            <div>• Loading: <span className="font-mono">{loading ? 'true' : 'false'}</span></div>
-            <div>• User: <span className="font-mono">{user ? 'postoji' : 'ne postoji'}</span></div>
-            <div>• Vreme: <span className="font-mono">{new Date().toLocaleTimeString()}</span></div>
-          </div>
-          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-sm text-yellow-800">
-              ⚠️ Ako se učitavanje produžava, možda postoji problem sa mrežom ili Supabase konekcijom.
-            </p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Greška pri učitavanju
+          </h2>
+          <p className="text-gray-600 mb-4">
+            Došlo je do greške pri inicijalizaciji aplikacije.
+          </p>
+          <div className="space-y-2">
             <button 
               onClick={() => window.location.reload()} 
               className="mt-2 px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600"
@@ -67,6 +63,17 @@ function App() {
     )
   }
 
+  // Determine redirect path based on user role
+  const getRedirectPath = () => {
+    if (!user) return "/dashboard"
+    
+    const isCompany = user.app_metadata?.role === 'admin' || 
+                     user.user_metadata?.role === 'company' || 
+                     user.app_metadata?.role === 'company'
+    
+    return isCompany ? "/admin/dashboard" : "/dashboard"
+  }
+
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
@@ -74,11 +81,11 @@ function App() {
           {/* Public routes */}
           <Route 
             path="/login" 
-            element={user ? <Navigate to="/dashboard" replace /> : <Login />} 
+            element={user ? <Navigate to={getRedirectPath()} replace /> : <Login />} 
           />
           <Route 
             path="/register" 
-            element={user ? <Navigate to="/dashboard" replace /> : <Register />} 
+            element={user ? <Navigate to={getRedirectPath()} replace /> : <Register />} 
           />
           
           {/* Protected routes */}
@@ -125,6 +132,12 @@ function App() {
             </ProtectedRoute>
           } />
           
+          <Route path="/admin/issues" element={
+            <ProtectedRoute adminOnly>
+              <AdminIssues />
+            </ProtectedRoute>
+          } />
+          
           {/* Building routes */}
           <Route path="/buildings" element={
             <ProtectedRoute>
@@ -150,9 +163,47 @@ function App() {
             </ProtectedRoute>
           } />
           
+          {/* Tenant routes */}
+          <Route path="/tenants" element={
+            <ProtectedRoute adminOnly>
+              <Tenants />
+            </ProtectedRoute>
+          } />
+          
+          {/* Reports routes */}
+          <Route path="/reports" element={
+            <ProtectedRoute adminOnly>
+              <Reports />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reports/issues" element={
+            <ProtectedRoute adminOnly>
+              <ReportsIssues />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reports/tenants" element={
+            <ProtectedRoute adminOnly>
+              <ReportsTenants />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reports/buildings" element={
+            <ProtectedRoute adminOnly>
+              <ReportsBuildings />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/reports/performance" element={
+            <ProtectedRoute adminOnly>
+              <ReportsPerformance />
+            </ProtectedRoute>
+          } />
+          
           {/* Default redirect */}
           <Route path="/" element={
-            user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />
+            user ? <Navigate to={getRedirectPath()} replace /> : <Navigate to="/login" replace />
           } />
         </Routes>
         

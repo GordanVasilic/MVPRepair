@@ -21,6 +21,11 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
   }
 
   const handleEditAddress = (address: Address) => {
+    // Sprečiti uređivanje nasleđenih adresa
+    if (address.isInherited) {
+      toast.error('Ne možete menjati adresu dodeljenu od firme')
+      return
+    }
     setEditingAddress(address)
     setIsFormOpen(true)
   }
@@ -54,6 +59,14 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
   }
 
   const handleDeleteAddress = async (id: string) => {
+    const addressToDelete = addresses.find(addr => addr.id === id)
+    
+    // Sprečiti brisanje nasleđenih adresa
+    if (addressToDelete?.isInherited) {
+      toast.error('Ne možete obrisati adresu dodeljenu od firme')
+      return
+    }
+
     if (addresses.length <= 1) {
       toast.error('Mora postojati najmanje jedna adresa')
       return
@@ -68,6 +81,14 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
   }
 
   const handleSetDefaultAddress = async (id: string) => {
+    const addressToSetDefault = addresses.find(addr => addr.id === id)
+    
+    // Sprečiti postavljanje nasleđenih adresa kao glavne
+    if (addressToSetDefault?.isInherited) {
+      toast.error('Ne možete postaviti adresu dodeljenu od firme kao glavnu')
+      return
+    }
+
     const result = await setDefaultAddress(id)
     if (result.error) {
       toast.error(result.error)
@@ -88,9 +109,9 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
         <h3 className="text-lg font-medium text-gray-900">Moje adrese</h3>
         <button
           onClick={handleAddAddress}
-          disabled={disabled || addresses.length >= 5}
+          disabled={disabled || addresses.filter(addr => !addr.isInherited).length >= 5}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title={addresses.length >= 5 ? 'Maksimalno 5 adresa je dozvoljeno' : 'Dodaj novu adresu'}
+          title={addresses.filter(addr => !addr.isInherited).length >= 5 ? 'Maksimalno 5 ličnih adresa je dozvoljeno' : 'Dodaj novu adresu'}
         >
           <Plus className="w-4 h-4" />
           Dodaj novu adresu
@@ -98,11 +119,11 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
       </div>
 
       {/* Address limit info */}
-      {addresses.length >= 4 && (
+      {addresses.filter(addr => !addr.isInherited).length >= 4 && (
         <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          {addresses.length === 5 
-            ? 'Dostigli ste maksimalni broj adresa (5).'
-            : `Možete dodati još ${5 - addresses.length} adresu.`
+          {addresses.filter(addr => !addr.isInherited).length === 5 
+            ? 'Dostigli ste maksimalni broj ličnih adresa (5).'
+            : `Možete dodati još ${5 - addresses.filter(addr => !addr.isInherited).length} ličnu adresu.`
           }
         </div>
       )}
@@ -125,7 +146,20 @@ export const AddressManager: React.FC<AddressManagerProps> = ({ disabled = false
         </div>
       ) : (
         <div className="grid gap-4">
-          {addresses.map((address) => (
+          {/* Nasleđene adrese prvo */}
+          {addresses.filter(addr => addr.isInherited).map((address) => (
+            <AddressCard
+              key={address.id}
+              address={address}
+              onEdit={handleEditAddress}
+              onDelete={handleDeleteAddress}
+              onSetDefault={handleSetDefaultAddress}
+              disabled={disabled}
+            />
+          ))}
+          
+          {/* Lične adrese */}
+          {addresses.filter(addr => !addr.isInherited).map((address) => (
             <AddressCard
               key={address.id}
               address={address}

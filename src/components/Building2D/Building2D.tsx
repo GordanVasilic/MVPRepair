@@ -14,14 +14,6 @@ const Building2D: React.FC<Building2DProps> = ({
   if (!building) {
     return (
       <div className="building-2d-container">
-        <div className="building-title mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">
-            2D Prikaz objekta
-          </h3>
-          <p className="text-sm text-gray-600">
-            Učitavanje...
-          </p>
-        </div>
         <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
           <div className="text-gray-500">Učitavanje 2D prikaza...</div>
         </div>
@@ -96,7 +88,7 @@ const Building2D: React.FC<Building2DProps> = ({
           onClick={() => handleFloorClick(floorNumber)}
         />
         
-        {/* Floor label */}
+        {/* Floor label with issue count */}
         <text
           x="66"
           y={y + Math.max(40, Math.min(BUILDING_2D_DIMENSIONS.floorHeight - 5, (BUILDING_2D_DIMENSIONS.height - BUILDING_2D_DIMENSIONS.groundHeight - 40) / totalFloors - 5)) / 2 + 5}
@@ -188,6 +180,34 @@ const Building2D: React.FC<Building2DProps> = ({
             </text>
           </g>
         ))}
+
+        {/* Floor issue count badge */}
+        {floorIssues.length > 0 && (
+          <g>
+            <rect
+              x="360"
+              y={y + 5}
+              width="25"
+              height="18"
+              rx="9"
+              fill="#ef4444"
+              stroke="#ffffff"
+              strokeWidth="1"
+            />
+            <text
+              x="372.5"
+              y={y + 16}
+              fill="#ffffff"
+              fontSize="11"
+              fontWeight="bold"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              style={{ pointerEvents: 'none' }}
+            >
+              {floorIssues.length}
+            </text>
+          </g>
+        )}
       </g>
     );
   };
@@ -213,10 +233,12 @@ const Building2D: React.FC<Building2DProps> = ({
       {/* Building Title */}
       <div className="building-title mb-4">
         <h3 className="text-lg font-semibold text-gray-800">
-          2D Prikaz objekta
+          {building.name} ({building.address})
         </h3>
         <p className="text-sm text-gray-600">
-          Objekat sa {floorsCount} spratova{garageCount > 0 ? ` i ${garageCount} podrumskih nivoa` : ''}
+          {issues.length === 0 ? 'Nema prijavljenih kvarova' : 
+           issues.length === 1 ? '1 prijavljen kvar' : 
+           `${issues.length} prijavljenih kvarova`}
         </p>
       </div>
 
@@ -242,70 +264,87 @@ const Building2D: React.FC<Building2DProps> = ({
           />
         </svg>
 
-        {/* Legend */}
-        <div className="legend mt-4 flex flex-wrap gap-4 justify-center text-sm">
-          {garageCount > 0 && (
-            <div className="flex items-center gap-2">
-              <div 
-                className="w-4 h-4 rounded" 
-                style={{ backgroundColor: BUILDING_2D_COLORS.garage }}
-              />
-              <span className="text-gray-600">Podrumi</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <div 
-              className="w-4 h-4 rounded border" 
-              style={{ 
-                backgroundColor: BUILDING_2D_COLORS.groundFloor,
-                borderColor: BUILDING_2D_COLORS.groundFloorBorder
-              }}
-            />
-            <span className="text-gray-600">Prizemlje</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div 
-              className="w-4 h-4 rounded border" 
-              style={{ 
-                backgroundColor: BUILDING_2D_COLORS.regularFloor,
-                borderColor: BUILDING_2D_COLORS.regularFloorBorder
-              }}
-            />
-            <span className="text-gray-600">Spratovi</span>
-          </div>
-        </div>
 
-        {/* Issue legend */}
-        {issues.length > 0 && (
-          <div className="issue-legend mt-4 flex flex-wrap gap-3 justify-center text-xs">
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ISSUE_2D_COLORS.critical }} />
-              <span className="text-gray-600">Kritično</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ISSUE_2D_COLORS.high }} />
-              <span className="text-gray-600">Visoko</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ISSUE_2D_COLORS.medium }} />
-              <span className="text-gray-600">Srednje</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ISSUE_2D_COLORS.low }} />
-              <span className="text-gray-600">Nisko</span>
-            </div>
-          </div>
-        )}
 
-        {/* Building statistics */}
-        <div className="building-stats mt-4 text-center">
-          <div className="bg-white/80 rounded-lg p-3 inline-block">
-            <div className="text-xs text-gray-600">
-              Spratova: {floorsCount} {garageCount > 0 && `| Garaža: ${garageCount}`} | Problema: {issues.length}
-            </div>
-          </div>
-        </div>
+
       </div>
+
+      {/* Floor Issues Summary */}
+      {selectedFloor !== null && (
+        <div className="mt-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+          <h4 className="text-lg font-semibold text-gray-800 mb-3">
+            {selectedFloor < 0 ? `Podrum ${Math.abs(selectedFloor)}` : 
+             selectedFloor === 0 ? 'Prizemlje' : 
+             `${selectedFloor}. sprat`} - Kvarovi
+          </h4>
+          
+          {(() => {
+            const floorIssues = issues.filter(issue => issue.floor_number === selectedFloor);
+            
+            if (floorIssues.length === 0) {
+              return (
+                <p className="text-gray-600">Nema prijavljenih kvarova na ovom spratu.</p>
+              );
+            }
+
+            const issuesByPriority = floorIssues.reduce((acc, issue) => {
+              acc[issue.priority] = (acc[issue.priority] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>);
+
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(issuesByPriority).map(([priority, count]) => (
+                    <span
+                      key={priority}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        priority === 'urgent' ? 'bg-red-100 text-red-800' :
+                        priority === 'high' ? 'bg-orange-100 text-orange-800' :
+                        priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {priority === 'urgent' ? 'Hitno' :
+                       priority === 'high' ? 'Visok' :
+                       priority === 'medium' ? 'Srednji' : 'Nizak'}: {count}
+                    </span>
+                  ))}
+                </div>
+                
+                <div className="space-y-2">
+                  {floorIssues.slice(0, 3).map((issue) => (
+                    <div
+                      key={issue.id}
+                      className="flex items-start justify-between p-2 bg-gray-50 rounded cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleIssueClick(issue.id)}
+                    >
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{issue.title}</p>
+                        <p className="text-xs text-gray-600">{issue.category}</p>
+                      </div>
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          issue.priority === 'urgent' ? 'bg-red-500' :
+                          issue.priority === 'high' ? 'bg-orange-500' :
+                          issue.priority === 'medium' ? 'bg-yellow-500' :
+                          'bg-green-500'
+                        }`}
+                      />
+                    </div>
+                  ))}
+                  
+                  {floorIssues.length > 3 && (
+                    <p className="text-xs text-gray-500 text-center">
+                      ... i još {floorIssues.length - 3} kvar{floorIssues.length - 3 === 1 ? '' : 'ova'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };

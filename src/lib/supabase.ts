@@ -21,6 +21,7 @@ export interface User {
   phone?: string
   name?: string
   role?: 'tenant' | 'company'
+  access_token?: string
   user_metadata?: {
     name?: string
     phone?: string

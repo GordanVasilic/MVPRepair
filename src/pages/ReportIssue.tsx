@@ -52,6 +52,16 @@ interface CachedImageAnalysis {
   timestamp: number
 }
 
+// Interface for tenant information
+interface TenantInfo {
+  id: string
+  building_id: string
+  apartment_number: string
+  floor_number: number
+  building_name: string
+  building_address: string
+}
+
 export default function ReportIssue() {
   const navigate = useNavigate()
   const { user, addresses } = useAuthStore()
@@ -59,6 +69,7 @@ export default function ReportIssue() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null)
+  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null)
   
   // Debug: Log aiAnalysis state changes
   useEffect(() => {
@@ -93,6 +104,55 @@ export default function ReportIssue() {
   const selectedAddressId = watch('address_id')
   const selectedRoom = watch('room')
   const selectedAddress = addresses.find(addr => addr.id === selectedAddressId)
+
+  // Fetch tenant information for the current user
+  const fetchTenantInfo = useCallback(async () => {
+    if (!user) return
+
+    try {
+      // Check if user is a tenant by looking for their tenant record
+      const { data: tenantData, error } = await supabase
+        .from('apartment_tenants_with_details')
+        .select(`
+          id,
+          apartment_id,
+          building_id,
+          apartment_number,
+          floor,
+          building_name,
+          building_address
+        `)
+        .eq('tenant_id', user.id)
+        .eq('status', 'active')
+        .single()
+
+      if (error) {
+        console.log('User is not a tenant or error fetching tenant info:', error)
+        return
+      }
+
+      if (tenantData && tenantData.building) {
+        const tenant: TenantInfo = {
+          id: tenantData.id,
+          building_id: tenantData.building_id,
+          apartment_number: tenantData.apartment_number,
+          floor_number: tenantData.floor_number,
+          building_name: tenantData.building.name,
+          building_address: tenantData.building.address
+        }
+        
+        setTenantInfo(tenant)
+        console.log('🏠 Tenant info loaded:', tenant)
+      }
+    } catch (error) {
+      console.error('Error fetching tenant info:', error)
+    }
+  }, [user])
+
+  // Fetch tenant info on component mount
+  useEffect(() => {
+    fetchTenantInfo()
+  }, [fetchTenantInfo])
 
   // Predefined rooms for each address
   const availableRooms = [
@@ -508,6 +568,105 @@ export default function ReportIssue() {
       // Determine the final room value
       const finalRoom = data.room === 'Drugo' ? customRoom.trim() : data.room
       
+      // Determine apartment_id with fallback logic
+      let apartmentId = null
+      
+      console.log('🔍 Starting apartment_id search...')
+      console.log('📋 tenantInfo:', tenantInfo)
+      console.log('📋 selectedAddress:', selectedAddress)
+      
+      // First try to use tenantInfo if available (for registered tenants)
+      if (tenantInfo?.id) {
+        console.log('🏠 Searching apartment via tenantInfo...')
+        console.log('🔍 Search params:', {
+          building_id: tenantInfo.building_id,
+          apartment_number: tenantInfo.apartment_number
+        })
+        
+        // For registered tenants, we already have apartment_id from apartment_tenants_with_details
+        if (tenantInfo.apartment_id) {
+          apartmentId = tenantInfo.apartment_id
+          console.log('✅ Found apartment_id from tenantInfo:', apartmentId)
+        }
+      }
+      
+      // Fallback: try to find apartment_id from selected address
+      if (!apartmentId && selectedAddress) {
+        console.log('🏠 Searching apartment via selectedAddress...')
+        console.log('🔍 Search params:', {
+          building_id: selectedAddress.buildingId,
+          apartment_number: selectedAddress.apartment
+        })
+        
+        // If address has buildingId (inherited address), try to find apartment
+        if (selectedAddress.buildingId && selectedAddress.apartment) {
+          try {
+            const { data: apartment, error: apartmentError } = await supabase
+              .from('apartments')
+              .select('id, apartment_number')
+              .eq('building_id', selectedAddress.buildingId)
+              .eq('apartment_number', selectedAddress.apartment)
+              .single()
+            
+            console.log('📊 Selected address apartment query result:', { apartment, error: apartmentError })
+            
+            if (!apartmentError && apartment) {
+              apartmentId = apartment.id
+              console.log('✅ Found apartment_id from selected address:', apartmentId)
+            } else {
+              console.error('❌ Selected address apartment query failed:', apartmentError)
+              
+              // Try case-insensitive search as fallback
+              console.log('🔄 Trying case-insensitive search for selected address...')
+              const { data: apartmentsCaseInsensitive, error: caseError } = await supabase
+                .from('apartments')
+                .select('id, apartment_number')
+                .eq('building_id', selectedAddress.buildingId)
+                .ilike('apartment_number', selectedAddress.apartment)
+                .single()
+              
+              console.log('📊 Selected address case-insensitive result:', { apartmentsCaseInsensitive, error: caseError })
+              
+              if (!caseError && apartmentsCaseInsensitive) {
+                apartmentId = apartmentsCaseInsensitive.id
+                console.log('✅ Found apartment_id via case-insensitive search (selected address):', apartmentId)
+              }
+            }
+          } catch (error) {
+            console.error('⚠️ Exception in selectedAddress apartment search:', error)
+          }
+        }
+      }
+      
+      // Final check and debug info
+      console.log('🎯 Final apartment_id result:', apartmentId)
+      
+      if (!apartmentId) {
+        console.error('❌ CRITICAL: No apartment_id found! Issue will be created without apartment reference.')
+        console.log('🔍 Debug info for troubleshooting:')
+        console.log('- tenantInfo:', tenantInfo)
+        console.log('- selectedAddress:', selectedAddress)
+        
+        // Let's also check what apartments exist for this building
+        const buildingId = tenantInfo?.building_id || selectedAddress?.buildingId
+        if (buildingId) {
+          try {
+            const { data: allApartments, error: debugError } = await supabase
+              .from('apartments')
+              .select('id, apartment_number, building_id')
+              .eq('building_id', buildingId)
+            
+            console.log('🏢 All apartments in building:', allApartments)
+            console.log('🔍 Looking for apartment_number:', tenantInfo?.apartment_number || selectedAddress?.apartment)
+          } catch (debugError) {
+            console.error('Debug query failed:', debugError)
+          }
+        }
+      }
+      
+      // Determine building_id for location_details
+      const buildingId = tenantInfo?.building_id || selectedAddress?.buildingId
+      
       // Create issue
       const { data: issue, error } = await supabase
         .from('issues')
@@ -518,14 +677,17 @@ export default function ReportIssue() {
           category: data.category,
           priority: data.priority,
           status: 'open',
+          apartment_id: apartmentId, // Use the determined apartment_id - building and company will be linked through this
           location_details: {
             address: selectedAddress?.address,
             city: selectedAddress?.city,
             apartment: selectedAddress?.apartment,
-            floor: selectedAddress?.floor,
+            floor: tenantInfo?.floor_number || selectedAddress?.floor,
             entrance: selectedAddress?.entrance,
             room: finalRoom,
-            notes: selectedAddress?.notes
+            notes: selectedAddress?.notes,
+            building_id: buildingId, // Keep in location_details for backward compatibility
+            tenant_id: tenantInfo?.id
           }
         })
         .select()
@@ -660,14 +822,14 @@ export default function ReportIssue() {
                   style={{ maxWidth: '100%' }}
                 >
                   <option value="">Odaberite adresu</option>
-                  {addresses.map((address) => {
+                  {addresses.map((address, index) => {
                     const displayText = `${address.name} - ${address.city}, ${address.address}`
                     const truncatedText = displayText.length > 50 
                       ? displayText.substring(0, 47) + '...' 
                       : displayText
                     return (
                       <option 
-                        key={address.id} 
+                        key={`${address.id}-${index}`} 
                         value={address.id}
                         title={displayText}
                         style={{ 

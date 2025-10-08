@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types/express';
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 
 const router = Router();
 
@@ -29,25 +31,37 @@ const requireAdmin = async (req: AuthenticatedRequest, res: Response, next: any)
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    try {
+      // Use Supabase client to verify the token
+      const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    if (error || !user) {
+      if (error) {
+        console.error('Supabase auth error:', error.message);
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      // Check if user is admin or company
+      const userRole = user.user_metadata?.role;
+      if (userRole !== 'admin' && userRole !== 'company') {
+        return res.status(403).json({ error: 'Admin or company access required' });
+      }
+
+      req.user = {
+        id: user.id,
+        email: user.email || '',
+        user_metadata: user.user_metadata || {},
+        app_metadata: user.app_metadata || {}
+      };
+      next();
+    } catch (authError: any) {
+      console.error('Authentication error:', authError.message);
       return res.status(401).json({ error: 'Invalid token' });
     }
-
-    // Check if user is admin or company
-    const userRole = user.user_metadata?.role || user.app_metadata?.role;
-    if (userRole !== 'admin' && userRole !== 'company') {
-      return res.status(403).json({ error: 'Admin or company access required' });
-    }
-
-    req.user = {
-      id: user.id,
-      email: user.email,
-      user_metadata: user.user_metadata,
-      app_metadata: user.app_metadata
-    };
-    next();
   } catch (error) {
     console.error('Auth middleware error:', error);
     res.status(500).json({ error: 'Authentication error' });
@@ -63,9 +77,21 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    try {
+      // Use Supabase client to verify the token
+      const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    if (authError || !user) {
+      if (error) {
+        console.error('Supabase auth error in GET /buildings:', error.message);
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    } catch (authError: any) {
+      console.error('Authentication error in GET /buildings:', authError.message);
       return res.status(401).json({ error: 'Invalid token' });
     }
 
@@ -166,10 +192,15 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/buildings - Create new building (Admin only)
 router.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { name, address, floors_count = 1, description, garage_levels = 0 } = req.body;
+    const { name, address, floors_count = 1, description, garage_levels = 0, apartments_per_floor = 2 } = req.body;
 
     if (!name || !address) {
       return res.status(400).json({ error: 'Name and address are required' });
+    }
+
+    // Validate apartments_per_floor
+    if (apartments_per_floor < 1 || apartments_per_floor > 20) {
+      return res.status(400).json({ error: 'Apartments per floor must be between 1 and 20' });
     }
 
     // Get user from middleware
@@ -250,10 +281,42 @@ router.post('/', requireAdmin, async (req: AuthenticatedRequest, res: Response) 
       // Don't fail the request, just log the error
     }
 
+    // Generate and create apartments for floors 1, 2, 3... (no basement or ground floor)
+    const apartments = [];
+    const letters = 'ABCDEFGHIJKLMNOPQRST'; // Up to 20 apartments per floor
+    
+    for (let floor = 1; floor <= floors_count; floor++) {
+      for (let apt = 0; apt < apartments_per_floor; apt++) {
+        apartments.push({
+          building_id: building.id,
+          apartment_number: `${floor}${letters[apt]}`,
+          floor: floor,
+          rooms_config: {
+            rooms: ["living_room", "bedroom", "kitchen", "bathroom"]
+          }
+        });
+      }
+    }
+
+    // Insert apartments into database
+    if (apartments.length > 0) {
+      const { error: apartmentsError } = await userSupabase
+        .from('apartments')
+        .insert(apartments);
+
+      if (apartmentsError) {
+        console.error('Error creating apartments:', apartmentsError);
+        // Don't fail the request, just log the error
+      } else {
+        console.log(`✅ Created ${apartments.length} apartments for building ${building.id}`);
+      }
+    }
+
     res.status(201).json({ 
       building: {
         ...building,
-        building_models: buildingModel ? [buildingModel] : []
+        building_models: buildingModel ? [buildingModel] : [],
+        apartments_created: apartments.length
       }
     });
   } catch (error) {
@@ -292,7 +355,10 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
       updateData.garage_levels = garage_levels;
     }
     
-    const { data: building, error: buildingError } = await supabase
+    // Note: floors_count is stored in building_models table, not buildings table
+    // The buildings table uses floors_config object instead
+    
+    const { data: building, error: buildingError } = await serviceSupabase
       .from('buildings')
       .update(updateData)
       .eq('id', id)
@@ -304,23 +370,10 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Failed to update building' });
     }
 
-    // Handle floors_count update for building_models using service role with raw SQL
+    // Handle floors_count update for building_models using service role
     if (floors_count !== undefined) {
-      console.log('Processing floors_count update with raw SQL...');
-      
-      // Use service role client to bypass RLS
-      const serviceSupabase = createClient(
-        process.env.SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false
-          }
-        }
-      );
-
-      console.log('Service role client created');
+      console.log('Processing floors_count update for building_models...');
+      console.log('Service role client already available');
 
       try {
         console.log('Using direct Supabase operations for building_models...');
@@ -330,7 +383,7 @@ router.put('/:id', requireAdmin, async (req: Request, res: Response) => {
           .from('building_models')
           .select('id, floors_count')
           .eq('building_id', id)
-          .single();
+          .maybeSingle();
 
         console.log('Fallback - Existing model query result:', { existingModel, selectError });
 
@@ -462,6 +515,63 @@ router.put('/:id/model', requireAdmin, async (req: Request, res: Response) => {
     res.json({ model });
   } catch (error) {
     console.error('Building model update error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/buildings/:id/apartments - Get apartments for a building
+router.get('/:id/apartments', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'No authorization header' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Set the user context for RLS
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    });
+
+    // First verify the user owns this building
+    const { data: building, error: buildingError } = await userSupabase
+      .from('buildings')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (buildingError || !building) {
+      return res.status(404).json({ error: 'Building not found or access denied' });
+    }
+
+    // Get apartments for this building
+    const { data: apartments, error } = await userSupabase
+      .from('apartments')
+      .select('id, apartment_number, floor, building_id')
+      .eq('building_id', id)
+      .order('floor', { ascending: true })
+      .order('apartment_number', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching apartments:', error);
+      return res.status(500).json({ error: 'Failed to fetch apartments' });
+    }
+
+    res.json({ apartments: apartments || [] });
+  } catch (error) {
+    console.error('Apartments fetch error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

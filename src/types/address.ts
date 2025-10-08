@@ -8,6 +8,8 @@ export interface Address {
   entrance: string;
   notes: string;
   isDefault: boolean;
+  isInherited?: boolean; // Da li je adresa nasleđena od objekta (ne može se menjati)
+  buildingId?: string; // ID objekta od koga je nasleđena adresa
 }
 
 export interface UserProfile {

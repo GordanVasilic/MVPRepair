@@ -9,7 +9,9 @@ import {
   LogOut,
   Settings,
   Bell,
-  Building2
+  Building2,
+  Users,
+  BarChart3
 } from 'lucide-react'
 import { useAuthStore } from '../stores/authStore'
 
@@ -37,7 +39,10 @@ export default function Layout({ children }: LayoutProps) {
 
   const adminNavigation = [
     { name: 'Kontrolna tabla', href: '/admin/dashboard', icon: Settings },
+    { name: 'Kvarovi', href: '/admin/issues', icon: AlertTriangle },
     { name: 'Objekti', href: '/buildings', icon: Building2 },
+    { name: 'Stanari', href: '/tenants', icon: Users },
+    { name: 'Izvještaji', href: '/reports', icon: BarChart3 },
   ]
 
   // For non-admin users, include Dashboard in navigation
@@ -61,7 +66,10 @@ export default function Layout({ children }: LayoutProps) {
                 {/* Admin navigation - starts with Kontrolna tabla and Objekti */}
                 {adminNavigation.map((item) => {
                   const isActive = location.pathname === item.href || 
-                    (item.href === '/buildings' && location.pathname.startsWith('/buildings'))
+                    (item.href === '/buildings' && location.pathname.startsWith('/buildings')) ||
+                    (item.href === '/tenants' && location.pathname.startsWith('/tenants')) ||
+                    (item.href === '/admin/issues' && location.pathname.startsWith('/admin/issues')) ||
+                    (item.href === '/reports' && location.pathname.startsWith('/reports'))
                   return (
                     <li key={item.name}>
                       <Link

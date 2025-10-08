@@ -1,96 +1,195 @@
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config()
 
-const supabase = createClient(
+// Kreiranje Supabase klijenta sa service role ključem za admin operacije
+const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
 
 async function fixRLSPolicies() {
-  console.log('Fixing RLS policies...');
+  console.log('🔧 Popravljam RLS politike za building_tenants tabelu...')
   
   try {
-    // Disable RLS temporarily to fix the policies
-    console.log('Disabling RLS on building_models...');
-    const { error: disableRLS1 } = await supabase.rpc('exec_sql', { 
-      sql: 'ALTER TABLE building_models DISABLE ROW LEVEL SECURITY;' 
-    });
-    if (disableRLS1) console.log('Error disabling RLS on building_models:', disableRLS1.message);
+    // Prvo testiraj pristup sa admin klijentom
+    console.log('🔍 Testiram admin pristup...')
+    const { data: adminData, error: adminError } = await supabaseAdmin
+      .from('building_tenants')
+      .select('*')
+      .limit(5)
+
+    if (adminError) {
+      console.error('❌ Admin pristup neuspešan:', adminError.message)
+      return
+    }
+
+    console.log(`✅ Admin pristup uspešan - pronađeno ${adminData?.length || 0} zapisa`)
     
-    console.log('Disabling RLS on floor_plans...');
-    const { error: disableRLS2 } = await supabase.rpc('exec_sql', { 
-      sql: 'ALTER TABLE floor_plans DISABLE ROW LEVEL SECURITY;' 
-    });
-    if (disableRLS2) console.log('Error disabling RLS on floor_plans:', disableRLS2.message);
-    
-    console.log('Disabling RLS on rooms...');
-    const { error: disableRLS3 } = await supabase.rpc('exec_sql', { 
-      sql: 'ALTER TABLE rooms DISABLE ROW LEVEL SECURITY;' 
-    });
-    if (disableRLS3) console.log('Error disabling RLS on rooms:', disableRLS3.message);
-    
-    console.log('RLS policies fixed! Tables are now accessible.');
-    
-    // Test by trying to update a building model
-    const { data: buildings } = await supabase.from('buildings').select('id').limit(1);
-    if (buildings && buildings.length > 0) {
-      const buildingId = buildings[0].id;
+    if (adminData && adminData.length > 0) {
+      console.log('📋 Primer zapisa:')
+      adminData.forEach((record, index) => {
+        console.log(`   ${index + 1}. Tenant: ${record.tenant_id}, Building: ${record.building_id}, Status: ${record.status}`)
+      })
+    }
+
+    // Testiraj pristup kao demo@stanar.com
+    console.log('\n🔍 Testiram pristup kao demo@stanar.com...')
+    const supabaseUser = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY
+    )
+
+    // Autentifikuj se kao demo@stanar.com
+    const { data: authData, error: authError } = await supabaseUser.auth.signInWithPassword({
+      email: 'demo@stanar.com',
+      password: 'demo123'
+    })
+
+    if (authError) {
+      console.error('❌ Autentifikacija neuspešna:', authError.message)
+      return
+    }
+
+    console.log('✅ Uspešno autentifikovan kao demo@stanar.com')
+    console.log('👤 User ID:', authData.user.id)
+
+    // Testiraj pristup building_tenants sa RLS
+    const { data: userBuildingTenants, error: userError } = await supabaseUser
+      .from('building_tenants')
+      .select(`
+        id,
+        building_id,
+        apartment_number,
+        floor_number,
+        status,
+        buildings!inner(
+          id,
+          name,
+          address
+        )
+      `)
+      .eq('tenant_id', authData.user.id)
+      .eq('status', 'active')
+
+    if (userError) {
+      console.error('❌ Korisničko dohvatanje neuspešno:', userError.message)
       
-      // Try to create or update building model
-      const { data: existingModel } = await supabase
-        .from('building_models')
-        .select('id')
-        .eq('building_id', buildingId)
-        .single();
+      // Pokušaj da popraviš RLS politike
+      console.log('\n🔧 Pokušavam da popravim RLS politike...')
       
-      if (existingModel) {
-        // Update existing model
-        const { error: updateError } = await supabase
-          .from('building_models')
-          .update({
-            floors_count: 6,
-            model_config: {
-              floors: Array.from({ length: 6 }, (_, i) => ({
-                number: i + 1,
-                height: 3.0,
-                position: { x: 0, y: i * 3.5, z: 0 }
-              }))
-            }
-          })
-          .eq('building_id', buildingId);
+      // Odjavi korisnika pre admin operacija
+      await supabaseUser.auth.signOut()
+      
+      // Kreiraj ili ažuriraj RLS politike
+      const createPolicySQL = `
+        -- Obriši postojeće politike
+        DROP POLICY IF EXISTS "Tenants can view their own records" ON building_tenants;
+        DROP POLICY IF EXISTS "Company owners can view their building tenants" ON building_tenants;
+        DROP POLICY IF EXISTS "Company owners can manage their building tenants" ON building_tenants;
         
-        if (updateError) {
-          console.error('Error updating building model:', updateError);
-        } else {
-          console.log('✅ Successfully updated building model with 6 floors');
-        }
+        -- Kreiraj nove politike
+        CREATE POLICY "Tenants can view their own records" ON building_tenants
+          FOR SELECT USING (tenant_id = auth.uid());
+          
+        CREATE POLICY "Company owners can view their building tenants" ON building_tenants
+          FOR SELECT USING (
+            building_id IN (
+              SELECT id FROM buildings WHERE user_id = auth.uid()
+            )
+          );
+          
+        CREATE POLICY "Company owners can manage their building tenants" ON building_tenants
+          FOR ALL USING (
+            building_id IN (
+              SELECT id FROM buildings WHERE user_id = auth.uid()
+            )
+          );
+      `
+      
+      // Pokušaj direktno sa SQL komandom preko HTTP API-ja
+      const response = await fetch(`${process.env.SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': process.env.SUPABASE_SERVICE_ROLE_KEY
+        },
+        body: JSON.stringify({
+          sql: createPolicySQL
+        })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ HTTP greška pri kreiranju politika:', response.status, errorText)
       } else {
-        // Create new model
-        const { error: createError } = await supabase
-          .from('building_models')
-          .insert({
-            building_id: buildingId,
-            floors_count: 6,
-            model_config: {
-              floors: Array.from({ length: 6 }, (_, i) => ({
-                number: i + 1,
-                height: 3.0,
-                position: { x: 0, y: i * 3.5, z: 0 }
-              }))
-            }
-          });
+        console.log('✅ RLS politike uspešno ažurirane')
         
-        if (createError) {
-          console.error('Error creating building model:', createError);
+        // Testiraj ponovo
+        console.log('\n🔍 Testiram ponovo nakon ažuriranja politika...')
+        
+        // Autentifikuj se ponovo
+        const { data: authData2, error: authError2 } = await supabaseUser.auth.signInWithPassword({
+          email: 'demo@stanar.com',
+          password: 'demo123'
+        })
+
+        if (authError2) {
+          console.error('❌ Ponovna autentifikacija neuspešna:', authError2.message)
+          return
+        }
+
+        // Testiraj pristup ponovo
+        const { data: userBuildingTenants2, error: userError2 } = await supabaseUser
+          .from('building_tenants')
+          .select(`
+            id,
+            building_id,
+            apartment_number,
+            floor_number,
+            status,
+            buildings!inner(
+              id,
+              name,
+              address
+            )
+          `)
+          .eq('tenant_id', authData2.user.id)
+          .eq('status', 'active')
+
+        if (userError2) {
+          console.error('❌ Ponovno dohvatanje neuspešno:', userError2.message)
         } else {
-          console.log('✅ Successfully created building model with 6 floors');
+          console.log(`✅ Ponovno dohvatanje uspešno - pronađeno ${userBuildingTenants2?.length || 0} zapisa`)
+          if (userBuildingTenants2 && userBuildingTenants2.length > 0) {
+            userBuildingTenants2.forEach((bt, index) => {
+              console.log(`   ${index + 1}. Building: ${bt.buildings.name}, Apartment: ${bt.apartment_number}`)
+            })
+          }
         }
       }
+      
+    } else {
+      console.log(`✅ Korisničko dohvatanje uspešno - pronađeno ${userBuildingTenants?.length || 0} zapisa`)
+      if (userBuildingTenants && userBuildingTenants.length > 0) {
+        userBuildingTenants.forEach((bt, index) => {
+          console.log(`   ${index + 1}. Building: ${bt.buildings.name}, Apartment: ${bt.apartment_number}`)
+        })
+      }
     }
-    
+
+    // Odjavi korisnika
+    await supabaseUser.auth.signOut()
+
   } catch (error) {
-    console.error('Error:', error);
+    console.error('❌ Neočekivana greška:', error.message)
   }
 }
 
-fixRLSPolicies().catch(console.error);
+fixRLSPolicies()

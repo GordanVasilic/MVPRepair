@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Calendar, User, AlertCircle, Loader2, X, Image as ImageIcon, Building, Home, Clock, Tag, FileText, MessageCircle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, MapPin, Calendar, User, AlertCircle, Loader2, X, Image as ImageIcon, Building, Home, Clock, Tag, FileText, MessageCircle, CheckCircle, Trash2 } from 'lucide-react'
 import Layout from '../components/Layout'
 import { supabase, type Issue } from '../lib/supabase'
 import { toast } from 'sonner'
@@ -41,6 +41,8 @@ export default function IssueDetail() {
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
   const [resolvingIssue, setResolvingIssue] = useState(false)
+  const [deletingIssue, setDeletingIssue] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     if (!id) {
@@ -187,6 +189,57 @@ export default function IssueDetail() {
       toast.error('Neočekivana greška pri označavanju kao riješeno')
     } finally {
       setResolvingIssue(false)
+    }
+  }
+
+  const handleDeleteIssue = async () => {
+    if (!issue || !user) return
+
+    setDeletingIssue(true)
+    try {
+      // Prvo obriši sve slike povezane sa kvarom
+      const { error: imagesError } = await supabase
+        .from('issue_images')
+        .delete()
+        .eq('issue_id', issue.id)
+
+      if (imagesError) {
+        console.error('Error deleting issue images:', imagesError)
+        // Nastavi sa brisanjem kvara čak i ako slike nisu obrisane
+      }
+
+      // Obriši sve komentare povezane sa kvarom
+      const { error: commentsError } = await supabase
+        .from('issue_comments')
+        .delete()
+        .eq('issue_id', issue.id)
+
+      if (commentsError) {
+        console.error('Error deleting issue comments:', commentsError)
+        // Nastavi sa brisanjem kvara čak i ako komentari nisu obrisani
+      }
+
+      // Obriši kvar
+      const { error } = await supabase
+        .from('issues')
+        .delete()
+        .eq('id', issue.id)
+        .eq('user_id', user.id) // Dodatna sigurnost - samo vlasnik može obrisati
+
+      if (error) {
+        console.error('Error deleting issue:', error)
+        toast.error('Greška pri brisanju kvara')
+        return
+      }
+
+      toast.success('Kvar je uspješno obrisan')
+      navigate('/issues')
+    } catch (error) {
+      console.error('Error deleting issue:', error)
+      toast.error('Neočekivana greška pri brisanju kvara')
+    } finally {
+      setDeletingIssue(false)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -418,6 +471,41 @@ export default function IssueDetail() {
                     </div>
                   )}
 
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-md w-full p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <AlertCircle className="w-6 h-6 text-red-500" />
+                    <h3 className="text-lg font-semibold text-gray-900">Potvrdi brisanje</h3>
+                  </div>
+                  <p className="text-gray-600 mb-6">
+                    Da li ste sigurni da želite da obrišete ovaj kvar? Ova akcija se ne može poništiti.
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                    >
+                      Otkaži
+                    </button>
+                    <button
+                      onClick={handleDeleteIssue}
+                      disabled={deletingIssue}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {deletingIssue ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      {deletingIssue ? 'Brišem...' : 'Obriši kvar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
                   {/* Last Updated */}
                   <div>
                     <div className="flex items-start gap-3">
@@ -621,6 +709,16 @@ export default function IssueDetail() {
                 >
                   Štampaj izvještaj
                 </button>
+                {/* Dugme za brisanje kvara - vidljivo samo vlasniku */}
+                {user && issue.user_id === user.id && (
+                  <button 
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Obriši kvar
+                  </button>
+                )}
               </div>
             </div>
 
